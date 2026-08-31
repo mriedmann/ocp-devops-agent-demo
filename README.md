@@ -73,6 +73,7 @@ litellm model entry, so no `Authorization` header ever reached the predictor.
 k8s/       Kubernetes manifests (envsubst templates — ${NAMESPACE}, ${SHARED_MODELS_NAMESPACE})
 scripts/   bash: prereq check, deploy, verify, Route/port-forward access, model discovery, oc-debug helper
 opencode/  config.snippet.json — what to merge into ~/.config/opencode/opencode.json (or run scripts/print-opencode-config.sh)
+           Dockerfile, entrypoint.sh — portable opencode container image, see scripts/run-opencode-container.sh
 ```
 
 ## Prerequisites
@@ -282,6 +283,33 @@ act on. This is a hard backend limitation, not a bug in the shim — short of ge
 `--enable-auto-tool-choice` added to the shared ServingRuntime (not something a sandbox
 user can do), there's no way around it.
 
+## Containerized opencode (no local install needed)
+
+Don't want to install opencode on the machine you're working from, or want to point it
+at some *other* project without touching your own opencode config? `opencode/Dockerfile`
+builds a small image with just opencode in it; `scripts/run-opencode-container.sh` builds
+it (if needed) and runs it against any local directory, bind-mounted at `/workspace`.
+
+Prerequisites: Docker or Podman, and a working `~/.config/opencode/opencode.json` (run
+`./print-opencode-config.sh` once first — the container reuses that file as-is rather
+than regenerating it).
+
+```bash
+cd scripts
+./run-opencode-container.sh                  # opencode against $PWD
+./run-opencode-container.sh ~/some-other-repo   # opencode against that directory
+./run-opencode-container.sh ~/some-other-repo bash   # plain shell instead, opencode on PATH
+```
+
+It picks up `LITELLM_MASTER_KEY` from your shell if already exported, or falls back to
+fetching it from the `litellm-secrets` Secret via `oc` (same as `print-opencode-config.sh`)
+and injects it into the container as an env var on boot.
+
+The image is rebuilt automatically whenever `opencode/Dockerfile` or
+`opencode/entrypoint.sh` change. Since the Dockerfile always installs opencode's
+*latest* release, an unchanged Dockerfile can still mean a stale opencode binary over
+time — pass `--rebuild` to force a fresh build and pick up updates.
+
 ## Real tool-calling: the OpenRouter model
 
 Everything above gets you working *chat* through litellm, but never real tool execution
@@ -392,4 +420,5 @@ oc delete secret litellm-secrets
 | `nemotron-3.5-lightning` call fails with an auth/401-style error from litellm | `OPENROUTER_API_KEY` not set, stale, or invalid in `litellm-secrets` | Run `./add-openrouter-key.sh` with a fresh key from [openrouter.ai/keys](https://openrouter.ai/keys) |
 | OpenRouter works via curl but not via opencode | `opencode/config.snippet.json`'s `nemotron-3.5-lightning` entry not merged into `~/.config/opencode/opencode.json`, or still on an old config without it | Re-merge the snippet, `opencode run -m litellm/nemotron-3.5-lightning "hi"` to test directly |
 | `Gateway Time-out` from a slower tool-calling round trip (a reasoning model plus opencode's full tool-schema payload) | OpenShift's default Route backend timeout (30s) is too short | Already raised to 120s via the `haproxy.router.openshift.io/timeout` annotation in `k8s/route-litellm.yaml`; if you still see this, raise it further |
+| Containerized opencode (`run-opencode-container.sh`) starts but can't authenticate | `LITELLM_MASTER_KEY` wasn't exported and couldn't be fetched via `oc` (see the script's warning) | Export `LITELLM_MASTER_KEY` before running the script, or make sure `oc` is logged in with access to the `litellm-secrets` Secret |
 | litellm pod stuck `0/1 Ready` after a redeploy, `oc describe pod` shows the `readinessProbe` failing with 401/403 on `/health/readiness` | Known upstream regression in some litellm builds where that endpoint unexpectedly requires `x-litellm-key` ([BerriAI/litellm#8795](https://github.com/BerriAI/litellm/issues/8795)) | Check litellm pod logs for the actual error; if it's this, pin to an unaffected `litellm` image tag, or open an issue upstream — the readinessProbe itself (`k8s/deployment-litellm.yaml`) is unauthenticated by design per litellm's docs |
