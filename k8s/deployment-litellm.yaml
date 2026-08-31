@@ -27,7 +27,7 @@ spec:
         app: litellm
       annotations:
         # Forces a rollout whenever litellm-secrets' content changes (new
-        # DATABASE_URL, rotated master key, added GROQ_API_KEY, ...) — env
+        # DATABASE_URL, rotated master key, added OPENROUTER_API_KEY, ...) — env
         # vars from envFrom are only read at container start, and a Secret
         # change alone doesn't trigger a rollout. Set by scripts/01-deploy.sh
         # from the secret's actual current content, so re-running it always

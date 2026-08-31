@@ -1,5 +1,5 @@
 # The permanent, public entry point to litellm — both its OpenAI-compatible
-# API (/v1, what hermes-agent talks to) and its Admin UI (/ui) — so it's
+# API (/v1, what opencode talks to) and its Admin UI (/ui) — so it's
 # usable without cluster/oc access or a running `oc port-forward`. Applied by
 # default as part of ./01-deploy.sh.
 #
@@ -12,6 +12,12 @@
 # Don't want litellm reachable from the public internet? Remove this Route
 # and fall back to ./03-port-forward.sh instead (see README):
 #   oc delete -f k8s/route-litellm.yaml
+#
+# haproxy.router.openshift.io/timeout: OpenShift's default Route backend
+# timeout is 30s, which a slower tool-calling round trip (a reasoning model
+# plus opencode's full tool-schema payload) can exceed, surfacing as a
+# "Gateway Time-out" with no error from litellm or the model itself. Raised
+# to 120s — verified necessary against this setup on 2026-08-31.
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -19,6 +25,8 @@ metadata:
   namespace: ${NAMESPACE}
   labels:
     app: litellm
+  annotations:
+    haproxy.router.openshift.io/timeout: 120s
 spec:
   to:
     kind: Service

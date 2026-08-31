@@ -18,24 +18,29 @@
 #     by default. Fine for a sandbox; see README for the trust-the-CA
 #     alternative.
 #   - general_settings.master_key gates litellm's OWN proxy API (what you
-#     port-forward to and hermes calls) — separate from KSERVE_TOKEN.
+#     port-forward to and opencode calls) — separate from KSERVE_TOKEN.
 #
 # Tool-calling note: none of these three ServingRuntimes were started with
 # --enable-auto-tool-choice/--tool-call-parser (we don't control that, it's
 # a read-only shared project), so vLLM rejects ANY request carrying `tools`
-# with tool_choice "auto"/"required". hermes-agent always attaches its own
-# tool definitions, so every hermes request would 400 without the callback
+# with tool_choice "auto"/"required". opencode always attaches its own
+# tool definitions, so every opencode request would 400 without the callback
 # below. tool_choice_shim.py forces tool_choice to "none" for JUST these
 # three model_names, trading away real tool-calling for working plain chat
 # on them — see README "Tool-calling limitation". It deliberately does NOT
-# touch any other model (e.g. groq-llama-3.3-70b below), which supports
+# touch any other model (e.g. nemotron-3.5-lightning below), which supports
 # real native tool calling and must be left alone.
 #
-# groq-llama-3.3-70b: a free-tier model (console.groq.com) that DOES
-# support real tool calling, added specifically so hermes' terminal tool
-# actually works end to end through this litellm instance — see README
-# "Real tool-calling: the Groq model". Needs GROQ_API_KEY in
-# litellm-secrets; run scripts/add-groq-key.sh to set it.
+# nemotron-3.5-lightning: a free model on OpenRouter (openrouter.ai) that
+# DOES support real tool calling, added specifically so opencode's own
+# tools actually work end to end through this litellm instance — see
+# README "Real tool-calling: the OpenRouter model". Chosen over Groq's free
+# tier, which rate-limits by tokens-per-minute (8,000 for every
+# tool-calling-capable model) — too small for opencode's own tool-schema
+# overhead (~8,800 tokens before the actual conversation). OpenRouter's
+# free tier limits by request count instead (20/min, 50-1000/day), which
+# comfortably fits. Needs OPENROUTER_API_KEY in litellm-secrets; run
+# scripts/add-openrouter-key.sh to set it.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -64,19 +69,19 @@ data:
           model: hosted_vllm/isvc-nemotron-nano-9b-v2-fp8
           api_base: https://isvc-nemotron-nano-9b-v2-fp8-predictor.${SHARED_MODELS_NAMESPACE}.svc.cluster.local:8443/v1
           api_key: os.environ/KSERVE_TOKEN
-      - model_name: groq-llama-3.3-70b
+      - model_name: nemotron-3.5-lightning
         litellm_params:
-          model: groq/llama-3.3-70b-versatile
-          api_key: os.environ/GROQ_API_KEY
+          model: openrouter/nvidia/nemotron-3.5-lightning:free
+          api_key: os.environ/OPENROUTER_API_KEY
   tool_choice_shim.py: |
     from litellm.integrations.custom_logger import CustomLogger
 
     # Only these model_names route to a vLLM backend deployed without
     # --enable-auto-tool-choice/--tool-call-parser (sandbox-shared-models,
     # read-only — we can't fix it at the source). Every OTHER model (e.g.
-    # groq-llama-3.3-70b) supports real native tool calling and must NOT
-    # be touched here, or hermes' terminal tool would silently stop working
-    # even against a backend that's perfectly capable of executing it.
+    # nemotron-3.5-lightning) supports real native tool calling and must NOT
+    # be touched here, or opencode's own tools would silently stop working
+    # even against a backend that's perfectly capable of executing them.
     NO_NATIVE_TOOL_CHOICE_MODELS = {
         "qwen3-8b-fp8",
         "granite-31-8b-fp8",

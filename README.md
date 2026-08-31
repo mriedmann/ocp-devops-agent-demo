@@ -1,15 +1,15 @@
-# litellm on a Red Hat Developer Sandbox (RHOAI) + local hermes-agent
+# litellm on a Red Hat Developer Sandbox (RHOAI) + local opencode
 
 Reproducible setup for running [litellm](https://github.com/BerriAI/litellm) inside a
 **Red Hat Developer Sandbox 30-day trial with the OpenShift AI (RHOAI) add-on**, fronting
 the sandbox's shared, pre-deployed KServe `InferenceService` vLLM models — and then
-pointing a local [hermes-agent](https://github.com/NousResearch/hermes-agent) at it over
+pointing a local [opencode](https://github.com/anomalyco/opencode) at it over
 a public OpenShift Route, so no cluster/`oc` access is needed on the machine running
-hermes. (Prefer not to expose litellm publicly? `oc port-forward` still works as a
+opencode. (Prefer not to expose litellm publicly? `oc port-forward` still works as a
 fallback — see "Accessing litellm" below.) Also wires in one free hosted model
-([Groq](https://console.groq.com)) behind the same litellm instance to demonstrate real
-tool-calling, which the RHOAI models can't do — see "Real tool-calling: the Groq model"
-below.
+([OpenRouter](https://openrouter.ai)) behind the same litellm instance to demonstrate real
+tool-calling, which the RHOAI models can't do — see "Real tool-calling: the OpenRouter
+model" below.
 
 ## Why this isn't just "point litellm at the model URL"
 
@@ -42,15 +42,15 @@ litellm model entry, so no `Authorization` header ever reached the predictor.
  laptop (anywhere)                      Red Hat Developer Sandbox
 
 ┌────────────────────────────────────────┐   ┌─────────────────────────────────────┐   ┌────────────────────────────┐
-│ hermes-agent (CLI)                     │   │ litellm-deployment                  │   │ litellm-token-refresh      │
+│ opencode (CLI)                         │   │ litellm-deployment                  │   │ litellm-token-refresh      │
 │                                        │   │ (<your>-dev project)                │   │ CronJob                    │
 │ default:                               │   │                                     │   │                            │
-│   base_url: https://<route-host>/v1    │   │ - reached via Route "litellm"       │   │ restarts the Deployment    │
+│   baseURL: https://<route-host>/v1     │   │ - reached via Route "litellm"       │   │ restarts the Deployment    │
 │                                        │   │   (public, edge-TLS), or            │   │ every 45m so KSERVE_TOKEN  │
 │ fallback (no public Route):            │   │   oc port-forward :4000             │   │ never goes stale           │
-│   base_url: http://localhost:4000/v1   │   │ - reads KSERVE_TOKEN from its       │   └────────────────────────────┘
+│   baseURL: http://localhost:4000/v1    │   │ - reads KSERVE_TOKEN from its       │   └────────────────────────────┘
 │                                        │   │   own SA token at container start   │
-│ key_env: LITELLM_MASTER_KEY            │   │ - api_key: os.environ/KSERVE_TOKEN  │
+│ apiKey: {env:LITELLM_MASTER_KEY}       │   │ - api_key: os.environ/KSERVE_TOKEN  │
 └────────────────────────────────────────┘   │ - master_key gates the proxy        │
                                              └─────────────────────────────────────┘
 
@@ -72,7 +72,7 @@ litellm model entry, so no `Authorization` header ever reached the predictor.
 ```
 k8s/       Kubernetes manifests (envsubst templates — ${NAMESPACE}, ${SHARED_MODELS_NAMESPACE})
 scripts/   bash: prereq check, deploy, verify, Route/port-forward access, model discovery, oc-debug helper
-hermes/    config.snippet.yaml — what to merge into ~/.hermes/config.yaml (or run scripts/print-hermes-config.sh)
+opencode/  config.snippet.json — what to merge into ~/.config/opencode/opencode.json (or run scripts/print-opencode-config.sh)
 ```
 
 ## Prerequisites
@@ -83,10 +83,12 @@ hermes/    config.snippet.yaml — what to merge into ~/.hermes/config.yaml (or 
 - `oc` CLI, logged in (`oc login --token=... --server=...`, from the sandbox console's
   "Copy login command").
 - `jq`, `envsubst` (part of `gettext`), `openssl`.
-- [hermes-agent](https://github.com/NousResearch/hermes-agent) installed locally, only
-  needed for the last section.
-- A free [Groq](https://console.groq.com/keys) API key, only needed for "Real
-  tool-calling: the Groq model" below.
+- [opencode](https://github.com/anomalyco/opencode) installed locally
+  (`curl -fsSL https://opencode.ai/install | bash` — see
+  [opencode.ai/docs](https://opencode.ai/docs) for other install methods), only needed for
+  the last section.
+- A free [OpenRouter](https://openrouter.ai/keys) API key, only needed for "Real
+  tool-calling: the OpenRouter model" below.
 
 ## Install
 
@@ -106,7 +108,7 @@ NAMESPACE=my-dev-project SHARED_MODELS_NAMESPACE=sandbox-shared-models ./01-depl
 
 It also generates a random `LITELLM_MASTER_KEY` on first run (stored in the
 `litellm-secrets` Secret) — save it, you'll need it for both `02-verify.sh` (does this
-for you) and the hermes config:
+for you) and the opencode config:
 
 ```bash
 oc get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d
@@ -146,7 +148,7 @@ Without it, litellm keeps working for about an hour after each deploy/restart, t
 every model call starts 401ing until you restart it manually
 (`oc rollout restart deployment/litellm-deployment`).
 
-## Using it directly (no hermes)
+## Using it directly (no opencode)
 
 `01-deploy.sh` applies a public Route by default, so this works from any machine with
 network access, no `oc` required:
@@ -160,15 +162,15 @@ curl -s "https://${ROUTE_HOST}/v1/chat/completions" \
 ```
 Don't want litellm publicly reachable? Remove the Route (`oc delete -f
 k8s/route-litellm.yaml`) and use `http://localhost:4000/...` instead, after starting
-`./03-port-forward.sh` in another terminal. Swap `"model"` for `"groq-llama-3.3-70b"` to
-hit the Groq-backed entry instead (see "Real tool-calling: the Groq model" below — needs
-`./add-groq-key.sh` run first).
+`./03-port-forward.sh` in another terminal. Swap `"model"` for `"nemotron-3.5-lightning"`
+to hit the OpenRouter-backed entry instead (see "Real tool-calling: the OpenRouter model"
+below — needs `./add-openrouter-key.sh` run first).
 
 ## Accessing litellm
 
 `01-deploy.sh` applies `k8s/route-litellm.yaml` by default (edge-terminated TLS, HTTP
 redirected to HTTPS), so litellm's `/v1` API and `/ui` Admin UI are both reachable
-without cluster/`oc` access — this is what makes hermes-agent (and anyone else) able to
+without cluster/`oc` access — this is what makes opencode (and anyone else) able to
 use it without a running `oc port-forward`. **It adds no new auth layer** — the Route
 just forwards to the same litellm proxy, whose Admin UI login and API are already gated
 by `LITELLM_MASTER_KEY` (`general_settings.master_key` in
@@ -176,16 +178,16 @@ by `LITELLM_MASTER_KEY` (`general_settings.master_key` in
 
 ```bash
 cd scripts
-./print-hermes-config.sh
+./print-opencode-config.sh
 ```
 
 which prints the Admin UI URL (log in as `admin` with `LITELLM_MASTER_KEY` as the
-password) and a ready-to-merge hermes config block (see "Local hermes-agent setup"
-below). Anyone with the Route's URL can reach the login page, but not the API or UI
-content, without that key.
+password), then offers to merge the opencode config for it into
+`~/.config/opencode/opencode.json` (see "Local opencode setup" below). Anyone with the
+Route's URL can reach the login page, but not the API or UI content, without that key.
 
 Don't want litellm reachable from the public internet at all? Remove the Route and fall
-back to `oc port-forward` for both hermes and direct API access:
+back to `oc port-forward` for both opencode and direct API access:
 
 ```bash
 oc delete -f k8s/route-litellm.yaml
@@ -195,58 +197,64 @@ oc delete -f k8s/route-litellm.yaml
 
 `/ui/login` requires a Postgres `DATABASE_URL` to be set — without one it fails with
 **"Not connected to DB!"**, even though the plain proxy API works fine with just
-`LITELLM_MASTER_KEY` (curl/hermes never hit this). `./01-deploy.sh` provisions this for
+`LITELLM_MASTER_KEY` (curl/opencode never hit this). `./01-deploy.sh` provisions this for
 you (`k8s/deployment-postgres.yaml` + `k8s/pvc-postgres.yaml`), so if you deployed with
 an older version of this repo and hit that error, just re-run it — it detects the
 missing `DATABASE_URL` on your existing `litellm-secrets` Secret, adds it, and restarts
 `litellm-deployment` to pick it up.
 
-## Local hermes-agent setup
+## Local opencode setup
 
-1. Install hermes-agent (see its README) and run it once (`hermes`) so `~/.hermes/`
-   exists.
-2. Export the master key so hermes can read it:
+1. Install opencode (`curl -fsSL https://opencode.ai/install | bash`) and run it once
+   (`opencode`) so `~/.config/opencode/` exists.
+2. Export the master key so opencode can read it:
    ```bash
    export LITELLM_MASTER_KEY="<value from the Secret, see above>"
    ```
-   Add it to `~/.hermes/.env` instead if you want it to persist across shells.
+   Add it to your shell profile instead if you want it to persist across shells.
 3. Generate and merge the config:
    ```bash
-   cd scripts && ./print-hermes-config.sh
+   cd scripts && ./print-opencode-config.sh
    ```
-   Merge the printed block into `~/.hermes/config.yaml` (both blocks — `model:` sets the
-   default provider/model, `model_aliases:` adds a short name for the other usable
-   model). **Use it as printed** — it already encodes two fixes verified by actually
-   running `hermes -z` against this setup (see "Known-good models only" and
-   "Tool-calling limitation" below); a naive `hermes setup`/auto-discovery config will
-   hit both.
+   It shows a diff of what it would change in `~/.config/opencode/opencode.json` and asks
+   for confirmation before writing anything (pass `-y` to skip the prompt); a timestamped
+   `.bak` copy is written first, and anything else already in that file (other providers,
+   agents, permissions, ...) is left untouched — safe to re-run any time (after a
+   redeploy, to pick up a new Route host or model list) or decline, in which case nothing
+   is written and the config block is printed instead for you to merge by hand. **Use it
+   as generated** — it already encodes the two fixes below (see "Context and output-token
+   limits" and "Tool-calling limitation"), verified by actually running `opencode run`
+   against this setup on 2026-08-31; a naive auto-discovery config will hit both.
 4. Test with a one-shot prompt (no TUI, prints only the final answer):
    ```bash
-   hermes -z "Say OK and nothing else."
+   opencode run "Say OK and nothing else."
    ```
-5. Run `hermes` for the interactive REPL. Switch models mid-session with
-   `/model rhoai-nemotron`, or `hermes model` to pick interactively.
+5. Run `opencode` for the interactive TUI. Switch models mid-session with the `/models`
+   slash command, or pass `-m litellm/nemotron-nano-9b-v2-fp8` to `opencode run` for a
+   one-off call on a different model.
 
 **No public Route (port-forward fallback):** if you removed `k8s/route-litellm.yaml` and
-run `./03-port-forward.sh` instead, merge `hermes/config.snippet.yaml` as-is (its
-`base_url` fields already point at `http://localhost:4000/v1`) rather than running
-`print-hermes-config.sh`. **WSL2 note:** if hermes runs on native Windows while `oc
+run `./03-port-forward.sh` instead, merge `opencode/config.snippet.json` as-is (its
+`baseURL` fields already point at `http://localhost:4000/v1`) rather than running
+`print-opencode-config.sh`. **WSL2 note:** if opencode runs on native Windows while `oc
 port-forward` runs inside WSL2 (or vice versa), `localhost` doesn't route between them by
-default — use WSL2 mirrored networking, or point `base_url` at the WSL2 VM's actual IP
+default — use WSL2 mirrored networking, or point `baseURL` at the WSL2 VM's actual IP
 instead of `localhost`. Running both in the same shell environment avoids the issue
 entirely.
 
-### Known-good models only: qwen3-8b-fp8 doesn't qualify
+### Context and output-token limits
 
-hermes-agent hard-requires **≥64K context** on its main model (`Model ... has a context
-window of ... which is below the minimum 64,000 required by Hermes Agent`, checked
-before any API call). Of the three shared models, only `granite-31-8b-fp8` and
-`nemotron-nano-9b-v2-fp8` were deployed with `--max-model-len=65536`; `qwen3-8b-fp8` has
-no override and reports 40,960. hermes refuses it outright, as default model or as an
-alias. `hermes/config.snippet.yaml` only wires up the two that qualify — use qwen3
-directly via curl/litellm if you need it, not through hermes.
+opencode can't discover a custom provider's context window or safe output-token budget
+on its own, and defaults its output-token request higher than these fixed-context vLLM
+backends allow — the model's `limit.context`/`limit.output` fields in
+`opencode/config.snippet.json` **must** match what each ServingRuntime was actually
+deployed with (`--max-model-len`), or you'll hit a context-window-exceeded error from
+vLLM. All three shared models plus `nemotron-3.5-lightning` are set correctly in the
+shipped config — `qwen3-8b-fp8` (40,960 context) included, since (unlike some other CLI agents)
+opencode has no hard minimum-context requirement of its own; it was verified working
+end-to-end at that context size on 2026-08-31.
 
-### Tool-calling limitation (important — read before expecting hermes to run `oc` itself)
+### Tool-calling limitation (important — read before expecting opencode to run `oc` itself)
 
 None of the three ServingRuntimes in `sandbox-shared-models` were started with vLLM's
 `--enable-auto-tool-choice`/`--tool-call-parser` flags (we don't control that project —
@@ -257,72 +265,92 @@ read-only). vLLM hard-rejects **any** request carrying `tools` with `tool_choice
 {"error":{"message":"\"auto\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set", ...}}
 ```
 
-hermes-agent always attaches its own tool definitions (terminal, memory, todo, ...) to
-every request — there's no client-side flag that produces a genuinely toolless call, so
-every hermes request would 400 against this backend as-is.
+opencode always attaches its own tool definitions (bash, edit, read, ...) to every
+request — there's no client-side flag that produces a genuinely toolless call, so every
+opencode request would 400 against this backend as-is.
 
 **The fix applied here** (`k8s/configmap-litellm-config.yaml`'s `tool_choice_shim.py`,
 wired in via `litellm_settings.callbacks`): a litellm pre-call hook that forces
 `tool_choice` to `"none"` whenever `tools` is present, before forwarding to vLLM. This
-makes hermes' requests succeed — but it means **hermes can never actually invoke a tool
-through this endpoint**. Ask it to run a command and the model will describe or
-hallucinate a tool-call-shaped JSON blob as plain text; nothing executes, because
-`tool_choice: none` means the API layer never returns a real `tool_calls` object for
-hermes' harness to act on. This is a hard backend limitation, not a bug in the shim —
-short of getting `--enable-auto-tool-choice` added to the shared ServingRuntime (not
-something a sandbox user can do), there's no way around it.
+makes opencode's requests succeed — but it means **opencode can never actually invoke a
+tool through this endpoint**. Ask it to run a command and the model will describe or
+hallucinate a tool-call-shaped response as plain text instead (confirmed against
+`granite-31-8b-fp8` on 2026-08-31 — asking it to list files produced a fabricated
+transcript, not a real directory listing); nothing executes, because `tool_choice: none`
+means the API layer never returns a real `tool_calls` object for opencode's harness to
+act on. This is a hard backend limitation, not a bug in the shim — short of getting
+`--enable-auto-tool-choice` added to the shared ServingRuntime (not something a sandbox
+user can do), there's no way around it.
 
-## Real tool-calling: the Groq model
+## Real tool-calling: the OpenRouter model
 
 Everything above gets you working *chat* through litellm, but never real tool execution
 — the shared vLLM models structurally can't do it (previous section). To showcase the
-*full* loop — hermes actually calling its `terminal` tool, e.g. to run `oc` commands
-itself, still mandatorily routed through this same litellm instance — we added one more
-`model_list` entry backed by [Groq](https://console.groq.com)'s free API
-(`llama-3.3-70b-versatile`, which does support native tool calling).
+*full* loop — opencode actually calling its own tools, e.g. to run `oc` commands itself,
+still mandatorily routed through this same litellm instance — we added one more
+`model_list` entry backed by [OpenRouter](https://openrouter.ai)'s free API
+(`nvidia/nemotron-3.5-lightning:free`, which does support native tool calling).
 
-This is the point of fronting everything with litellm rather than pointing hermes
+**Why OpenRouter and not Groq:** an earlier version of this used Groq's free
+`llama-3.3-70b-versatile`, which Groq has since removed. Its replacements
+(`openai/gpt-oss-120b`, Qwen3, etc.) all share an **8,000 tokens-per-minute** free-tier
+cap — too small for opencode's own baseline overhead (its system prompt plus full
+built-in tool schema, ~8,800 tokens before the actual conversation even starts), causing
+constant rate-limit errors regardless of which Groq model or which opencode tools are
+enabled (verified against this setup on 2026-08-31 — confirmed with `openai/gpt-oss-120b`,
+including that it genuinely did execute `oc get pods` once, before the follow-up turn hit
+the cap). OpenRouter's free tier limits by **request count** instead (20/min, 50-1000/day
+depending on account credit history), which comfortably fits a large single request
+regardless of its token size — the actual constraint that broke Groq. Nemotron 3.5
+Lightning was picked over the other 17 free tool-calling-capable models on OpenRouter for
+its 1M-token context (ties for the largest) and its MoE design (3B active/30B total),
+which NVIDIA specifically targets at low-latency, high-throughput agentic workloads —
+exactly this use case.
+
+This is the point of fronting everything with litellm rather than pointing opencode
 straight at a model: litellm-on-OpenShift is a single control plane over a *mix* of
-self-hosted (the RHOAI predictors) and hosted (Groq) models. hermes only ever talks to
-litellm's proxy (over the Route, or `localhost:4000` via port-forward) — it has no idea,
-and doesn't need to know, that `groq-llama-3.3-70b`'s tokens run on Groq's infrastructure
-instead of cluster GPUs. Swapping, adding, or removing backends is a `model_list` edit,
-never a hermes-side change.
+self-hosted (the RHOAI predictors) and hosted (OpenRouter) models. opencode only ever
+talks to litellm's proxy (over the Route, or `localhost:4000` via port-forward) — it has
+no idea, and doesn't need to know, that `nemotron-3.5-lightning`'s tokens run on
+OpenRouter's infrastructure instead of cluster GPUs. Swapping, adding, or removing
+backends is a `model_list` edit, never an opencode-side change.
 
 **Setup** (one-time, after `01-deploy.sh`):
-1. Get a free key at [console.groq.com/keys](https://console.groq.com/keys) — no card
+1. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys) — no card
    required.
-2. Run `./add-groq-key.sh` and paste it at the hidden prompt. It patches the
-   `GROQ_API_KEY` entry into `litellm-secrets` (leaving `LITELLM_MASTER_KEY` alone) and
-   restarts `litellm-deployment` to pick it up.
+2. Run `./add-openrouter-key.sh` and paste it at the hidden prompt. It patches the
+   `OPENROUTER_API_KEY` entry into `litellm-secrets` (leaving `LITELLM_MASTER_KEY` alone)
+   and restarts `litellm-deployment` to pick it up.
 
-**Using it with hermes:** `hermes/config.snippet.yaml` already wires it up as the
-`groq` alias. Switch to it and ask for something that needs a real command:
+**Using it with opencode:** `opencode/config.snippet.json` already wires it up as
+`litellm/nemotron-3.5-lightning`. Switch to it and ask for something that needs a real
+command:
 
 ```bash
-hermes -m groq -z "Run 'oc get pods' and tell me if anything looks unhealthy."
+opencode run -m litellm/nemotron-3.5-lightning "Run 'oc get pods' and tell me if anything looks unhealthy."
 ```
 
-or interactively: `/model groq`, then just ask. Unlike the `rhoai-*` models, this one
-actually invokes hermes' `terminal` tool and returns real command output in its answer
-— you can watch it happen (hermes normally prompts for approval before running a
-command; pass `--yolo` to skip that if you want it fully unattended, but for a first run
-leave it on so you can see what it's about to execute).
+or interactively: `/models`, pick it, then just ask. Unlike the `rhoai-*` models, this
+one actually invokes one of opencode's real tools and returns real command output in its
+answer — you can watch it happen (opencode normally prompts for approval before running a
+command; pass `--auto` to skip that if you want it fully unattended, but for a first run
+leave it on so you can see what it's about to execute). Verified end-to-end on
+2026-08-31: a real `oc get pods` ran and its actual output was summarized correctly.
 
 **Verify the routing, not just the answer:** tail the litellm pod logs while you run the
-command above — you'll see the `/v1/chat/completions` call for `groq-llama-3.3-70b` hit
-litellm *inside the cluster* (not your laptop calling Groq directly), same as every
-other model:
+command above — you'll see the `/v1/chat/completions` call for `nemotron-3.5-lightning`
+hit litellm *inside the cluster* (not your laptop calling OpenRouter directly), same as
+every other model:
 
 ```bash
 oc logs -n "$NAMESPACE" -l app=litellm -f
 ```
 
-## Minimal OpenShift debugging with hermes
+## Minimal OpenShift debugging with opencode
 
-If you'd rather not set up Groq (previous section) — or want to use one of the RHOAI
+If you'd rather not set up OpenRouter (previous section) — or want to use one of the RHOAI
 models specifically — the practical pattern for those is: **you run the `oc` command,
-hermes reasons over the output** — a one-shot prompt with the command's output embedded,
+opencode reasons over the output** — a one-shot prompt with the command's output embedded,
 no tool-calling involved. This works today, end to end, no server-side changes needed,
 against any model including the `rhoai-*` ones:
 
@@ -333,9 +361,9 @@ cd scripts
 ./oc-debug.sh logs deploy/litellm-deployment -n my-namespace --tail=200
 ```
 
-It runs the `oc` command locally, then sends the output to hermes with a prompt asking
+It runs the `oc` command locally, then sends the output to opencode with a prompt asking
 it to flag crashloops, pending/failed pods, image-pull errors, high restart counts, etc.
-Override the model with `HERMES_MODEL=nemotron-nano-9b-v2-fp8 ./oc-debug.sh ...`.
+Override the model with `OPENCODE_MODEL=nemotron-nano-9b-v2-fp8 ./oc-debug.sh ...`.
 
 ## Cleanup
 
@@ -357,11 +385,11 @@ oc delete secret litellm-secrets
 | 401s starting ~1h after a restart | Token-refresh CronJob isn't running (missing RoleBinding) | `oc apply -f k8s/rolebinding-litellm-restarter.yaml`, check `oc get cronjob,jobs -l` |
 | `model not found` from vLLM (not litellm) | `litellm_params.model` doesn't match the predictor's `--served-model-name` | Must be `hosted_vllm/<InferenceService name>`, e.g. `hosted_vllm/isvc-qwen3-8b-fp8` |
 | SSL errors from litellm | Predictor's TLS cert is signed by OpenShift's internal service-serving CA | `ssl_verify: false` in `litellm_settings` (already set) — or mount `openshift-service-ca.crt` and point litellm at it if you want real verification |
-| hermes can't reach litellm | Route not applied yet (`oc get route litellm`), stale host baked into `~/.hermes/config.yaml` (re-run `./print-hermes-config.sh` after any redeploy), or — if using the port-forward fallback — the tunnel isn't running / a WSL2-Windows networking split | Re-run `./print-hermes-config.sh`, or restart `./03-port-forward.sh` and check the WSL2 note above |
-| hermes: `"auto" tool choice requires --enable-auto-tool-choice...` | `tool_choice_shim.py` callback isn't loaded (old ConfigMap, or `litellm_settings.callbacks` missing) | Redeploy `k8s/configmap-litellm-config.yaml`, check litellm pod logs for import errors, `oc rollout restart deployment/litellm-deployment` |
-| hermes: `"Context length exceeded (N tokens). Cannot compress further"` for a *tiny* prompt | Misleading — hermes' error classifier mis-files a `ContextWindowExceededError` as "conversation too big". Real cause: `max_tokens` defaulted to the model's full context window, leaving no room for hermes' ~15K tokens of tool-schema overhead | Set `model.max_tokens: 8192` (already in `hermes/config.snippet.yaml`) |
-| hermes: `"Model ... has a context window of ... below the minimum 64,000"` | That model's `--max-model-len` is under 64K (true for `qwen3-8b-fp8` here) | Use a model with ≥64K context (`granite-31-8b-fp8`, `nemotron-nano-9b-v2-fp8`) |
-| hermes runs but never actually executes a command it says it will | Expected — see "Tool-calling limitation" above | Use `scripts/oc-debug.sh` instead of asking hermes to run `oc` itself, or switch to `/model groq` |
-| `groq-llama-3.3-70b` call fails with an auth/401-style error from litellm | `GROQ_API_KEY` not set (or stale) in `litellm-secrets` | Run `./add-groq-key.sh` |
-| Groq works via curl but not via hermes | `hermes/config.snippet.yaml`'s `groq` alias not merged into `~/.hermes/config.yaml`, or still on the old config without it | Re-merge the snippet, `hermes -m groq -z "hi"` to test directly |
+| opencode can't reach litellm | Route not applied yet (`oc get route litellm`), stale host baked into `~/.config/opencode/opencode.json` (re-run `./print-opencode-config.sh` after any redeploy), or — if using the port-forward fallback — the tunnel isn't running / a WSL2-Windows networking split | Re-run `./print-opencode-config.sh`, or restart `./03-port-forward.sh` and check the WSL2 note above |
+| opencode: `"auto" tool choice requires --enable-auto-tool-choice...` | `tool_choice_shim.py` callback isn't loaded (old ConfigMap, or `litellm_settings.callbacks` missing) | Redeploy `k8s/configmap-litellm-config.yaml`, check litellm pod logs for import errors, `oc rollout restart deployment/litellm-deployment` |
+| opencode: a context/output-token-exceeded error against a shared model | `limit.context`/`limit.output` missing or wrong for that model in `opencode.json` — opencode can't discover a custom provider's real limits and will otherwise request more room than the model has | Match `limit.context`/`limit.output` to the ServingRuntime's actual `--max-model-len` (already set correctly in `opencode/config.snippet.json`) |
+| opencode runs but never actually executes a command it says it will | Expected — see "Tool-calling limitation" above | Use `scripts/oc-debug.sh` instead of asking opencode to run `oc` itself, or switch to `/models` → the OpenRouter entry |
+| `nemotron-3.5-lightning` call fails with an auth/401-style error from litellm | `OPENROUTER_API_KEY` not set, stale, or invalid in `litellm-secrets` | Run `./add-openrouter-key.sh` with a fresh key from [openrouter.ai/keys](https://openrouter.ai/keys) |
+| OpenRouter works via curl but not via opencode | `opencode/config.snippet.json`'s `nemotron-3.5-lightning` entry not merged into `~/.config/opencode/opencode.json`, or still on an old config without it | Re-merge the snippet, `opencode run -m litellm/nemotron-3.5-lightning "hi"` to test directly |
+| `Gateway Time-out` from a slower tool-calling round trip (a reasoning model plus opencode's full tool-schema payload) | OpenShift's default Route backend timeout (30s) is too short | Already raised to 120s via the `haproxy.router.openshift.io/timeout` annotation in `k8s/route-litellm.yaml`; if you still see this, raise it further |
 | litellm pod stuck `0/1 Ready` after a redeploy, `oc describe pod` shows the `readinessProbe` failing with 401/403 on `/health/readiness` | Known upstream regression in some litellm builds where that endpoint unexpectedly requires `x-litellm-key` ([BerriAI/litellm#8795](https://github.com/BerriAI/litellm/issues/8795)) | Check litellm pod logs for the actual error; if it's this, pin to an unaffected `litellm` image tag, or open an issue upstream — the readinessProbe itself (`k8s/deployment-litellm.yaml`) is unauthenticated by design per litellm's docs |

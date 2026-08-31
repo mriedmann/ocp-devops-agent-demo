@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "litellm/granite-31-8b-fp8",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "litellm (sandbox)",
+      "options": {
+        "baseURL": "http://localhost:4000/v1",
+        "apiKey": "{env:LITELLM_MASTER_KEY}"
+      },
+      "models": {
+        "qwen3-8b-fp8": {
+          "name": "Qwen3 8B",
+          "limit": { "context": 40960, "output": 4096 }
+        },
+        "granite-31-8b-fp8": {
+          "name": "Granite 3.1 8B",
+          "limit": { "context": 65536, "output": 8192 }
+        },
+        "nemotron-nano-9b-v2-fp8": {
+          "name": "Nemotron Nano 9B v2",
+          "limit": { "context": 65536, "output": 8192 }
+        },
+        "nemotron-3.5-lightning": {
+          "name": "Nemotron 3.5 Lightning (tool-calling, via OpenRouter)",
+          "limit": { "context": 1000000, "output": 65536 }
+        }
+      }
+    }
+  }
+}

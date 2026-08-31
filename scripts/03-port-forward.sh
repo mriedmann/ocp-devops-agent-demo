@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Exposes litellm on localhost so a local hermes-agent can reach it.
-# Keep this running in its own terminal while you use hermes; it forwards
+# Exposes litellm on localhost so a local opencode can reach it.
+# Keep this running in its own terminal while you use opencode; it forwards
 # on the Service, not the pod, so it survives litellm-token-refresh
 # restarting the pod underneath it.
 #

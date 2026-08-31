@@ -78,4 +78,4 @@ ROUTE_HOST=$(oc get route litellm -n "$NAMESPACE" -o jsonpath='{.spec.host}')
 
 echo
 echo "Done. litellm is reachable at: https://${ROUTE_HOST}"
-echo "Next: ./02-verify.sh, then ./print-hermes-config.sh for a ready-to-merge hermes config."
+echo "Next: ./02-verify.sh, then ./print-opencode-config.sh for a ready-to-merge opencode config."
