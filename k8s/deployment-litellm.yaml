@@ -1,0 +1,96 @@
+# The container command exports KSERVE_TOKEN from the pod's own
+# auto-mounted ServiceAccount token (automountServiceAccountToken defaults
+# to true — nothing extra needed) *before* exec'ing litellm, so the token
+# used to authenticate to KServe is always read fresh at process start.
+# That's why the token-refresh CronJob works: restarting the pod is enough
+# to pick up a new token, no volume-watching or Secret rotation needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: litellm
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0  # keep the old pod serving until the new one passes readinessProbe
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+      annotations:
+        # Forces a rollout whenever litellm-secrets' content changes (new
+        # DATABASE_URL, rotated master key, added GROQ_API_KEY, ...) — env
+        # vars from envFrom are only read at container start, and a Secret
+        # change alone doesn't trigger a rollout. Set by scripts/01-deploy.sh
+        # from the secret's actual current content, so re-running it always
+        # converges the running pod to match — no manual restart needed, and
+        # nothing depends on a one-off flag surviving a prior failed run.
+        checksum/litellm-secrets: "${LITELLM_SECRETS_HASH}"
+    spec:
+      containers:
+        - name: litellm
+          image: docker.litellm.ai/berriai/litellm:main-stable
+          command:
+            - sh
+            - -c
+            - >-
+              export KSERVE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" &&
+              exec litellm --config /app/proxy_server_config.yaml
+          ports:
+            - containerPort: 4000
+              protocol: TCP
+          resources:
+            # The namespace's LimitRange default (1000Mi limit / 64Mi
+            # request) OOMKilled this container within ~20s of startup —
+            # Prisma's query-engine binary + DB migration (for the Postgres
+            # Admin UI) plus litellm's own baseline pushes well past 1Gi
+            # before it even finishes booting, let alone serves traffic.
+            # 2Gi/1 CPU is comfortable headroom; the namespace quota allows
+            # up to 30Gi total and this is the only real consumer of it.
+            # Re-check with `oc adm top pod` once stable and trim down if
+            # steady-state usage is much lower than the limit.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          readinessProbe:
+            # /health/readiness needs no auth header and does no LLM calls —
+            # it just reports whether the proxy process is up and (with
+            # DATABASE_URL set) connected to Postgres. Combined with
+            # maxUnavailable: 0 above, the old pod keeps serving until this
+            # passes on the new one, so a redeploy no longer drops traffic.
+            httpGet:
+              path: /health/readiness
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          env:
+            - name: LITELLM_DISABLE_NO_REDIS_WARNING
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: litellm-secrets
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/proxy_server_config.yaml
+              subPath: config.yaml
+            - name: config-volume
+              mountPath: /app/tool_choice_shim.py
+              subPath: tool_choice_shim.py
+      volumes:
+        - name: config-volume
+          configMap:
+            name: litellm-config-file
+            defaultMode: 420

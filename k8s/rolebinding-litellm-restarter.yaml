@@ -1,0 +1,18 @@
+# Grants litellm-restarter permission to patch/restart the litellm
+# Deployment in this namespace only (ClusterRole "edit" scoped by this
+# namespaced RoleBinding). This is intentionally NOT applied by an agent
+# automatically — granting RBAC is treated as a sensitive action, so run
+# this yourself with your own oc/kubectl session.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: litellm-restarter-edit
+  namespace: ${NAMESPACE}
+subjects:
+  - kind: ServiceAccount
+    name: litellm-restarter
+    namespace: ${NAMESPACE}
+roleRef:
+  kind: ClusterRole
+  name: edit
+  apiGroup: rbac.authorization.k8s.io

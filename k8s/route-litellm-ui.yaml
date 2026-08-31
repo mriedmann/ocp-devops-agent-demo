@@ -1,0 +1,26 @@
+# Exposes litellm externally (its Admin UI at /ui, and its OpenAI-compatible
+# API) for showcasing without requiring cluster/oc access. This adds NO new
+# auth of its own — every request still hits litellm's own login/bearer-token
+# check gated by general_settings.master_key (see configmap-litellm-config.yaml
+# and secret-litellm-secrets.example.yaml). TLS is edge-terminated and HTTP is
+# redirected to HTTPS so the master key is never sent in the clear.
+#
+# Temporary by design — tear it down after the showcase:
+#   oc delete -f k8s/route-litellm-ui.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: litellm-ui
+  namespace: ${NAMESPACE}
+  labels:
+    app: litellm
+spec:
+  to:
+    kind: Service
+    name: litellm-service
+    weight: 100
+  port:
+    targetPort: 4000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

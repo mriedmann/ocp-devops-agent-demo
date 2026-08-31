@@ -1,0 +1,56 @@
+# Merge these blocks into ~/.hermes/config.yaml (do NOT replace the whole
+# file — hermes ships a large commented example there).
+#
+# Verified by actually running hermes -z against this setup on 2026-08-31.
+# Two backend quirks this config works around — see README "Tool-calling
+# limitation" and "Known-good models only":
+#
+#   1. tools + max_tokens: hermes always attaches its own tool
+#      definitions AND defaults max_tokens to the model's full context
+#      window. vLLM (unlike hosted APIs) hard-rejects both: tools without
+#      --enable-auto-tool-choice on the server, and max_tokens + input
+#      tokens exceeding context_length. The litellm-side tool_choice_shim
+#      (see k8s/configmap-litellm-config.yaml) handles the first; `model.
+#      max_tokens: 8192` below handles the second. Without it every
+#      request fails with a "ContextWindowExceededError" that hermes
+#      misreports as "Cannot compress further" (looks like a huge
+#      conversation — it isn't; it's ~15K tokens of tool-schema overhead
+#      plus an unbounded max_tokens request).
+#
+#   2. hermes hard-requires >=64K context on its main model. Of the three
+#      shared InferenceServices, only granite-31-8b-fp8 and
+#      nemotron-nano-9b-v2-fp8 were deployed with --max-model-len=65536.
+#      qwen3-8b-fp8 has no --max-model-len override and reports 40,960 —
+#      hermes refuses to use it as the default model OR via an alias.
+#      It's excluded below; use it directly via curl/litellm if you need it.
+#
+# Prereq: scripts/03-port-forward.sh running in another terminal, and
+# LITELLM_MASTER_KEY exported in your shell (same value as the
+# litellm-secrets Secret — see README "Local hermes agent" section).
+#
+# groq-llama-3.3-70b (alias `groq` below) is the ONE model here where
+# hermes' terminal/tool-calling actually WORKS — see README "Real
+# tool-calling: the Groq model". The three rhoai-* models can chat but can
+# never execute a tool (tool_choice is forced to "none" for them
+# server-side, see k8s/configmap-litellm-config.yaml). Needs
+# GROQ_API_KEY set via scripts/add-groq-key.sh first.
+
+# ── Default model / provider ────────────────────────────────────────────
+model:
+  provider: custom
+  base_url: "http://localhost:4000/v1"
+  default: "granite-31-8b-fp8"      # matches a model_name in litellm's config.yaml
+  key_env: "LITELLM_MASTER_KEY"     # reads from the LITELLM_MASTER_KEY env var
+  max_tokens: 8192                  # REQUIRED — see quirk #1 above
+
+# ── Optional: short aliases for the other models ────────────────────────
+# Switch with `/model rhoai-nemotron` or `/model groq` mid-session.
+model_aliases:
+  rhoai-nemotron:
+    model: nemotron-nano-9b-v2-fp8
+    provider: custom
+    base_url: "http://localhost:4000/v1"
+  groq:
+    model: groq-llama-3.3-70b
+    provider: custom
+    base_url: "http://localhost:4000/v1"

@@ -1,0 +1,94 @@
+# litellm model list for the shared RHOAI/KServe InferenceServices.
+#
+# Models below match what was available in the sandbox at doc-writing time
+# (2026-08-31). The sandbox's shared model pool can change — run
+# scripts/list-shared-models.sh to see what's actually available in yours,
+# and scripts/generate-model-list.sh to regenerate the `model_list:` block
+# below from the live cluster instead of copying it by hand.
+#
+# Auth notes:
+#   - api_key: os.environ/KSERVE_TOKEN — each model entry must set this.
+#     KSERVE_TOKEN is exported by the Deployment's container command at
+#     startup (see deployment-litellm.yaml) from the pod's own
+#     auto-mounted ServiceAccount token. That token is accepted because
+#     sandbox-shared-models grants `get` on inferenceservices to the
+#     system:authenticated group.
+#   - ssl_verify: false — the predictors' TLS certs are signed by
+#     OpenShift's internal service-serving CA, which litellm doesn't trust
+#     by default. Fine for a sandbox; see README for the trust-the-CA
+#     alternative.
+#   - general_settings.master_key gates litellm's OWN proxy API (what you
+#     port-forward to and hermes calls) — separate from KSERVE_TOKEN.
+#
+# Tool-calling note: none of these three ServingRuntimes were started with
+# --enable-auto-tool-choice/--tool-call-parser (we don't control that, it's
+# a read-only shared project), so vLLM rejects ANY request carrying `tools`
+# with tool_choice "auto"/"required". hermes-agent always attaches its own
+# tool definitions, so every hermes request would 400 without the callback
+# below. tool_choice_shim.py forces tool_choice to "none" for JUST these
+# three model_names, trading away real tool-calling for working plain chat
+# on them — see README "Tool-calling limitation". It deliberately does NOT
+# touch any other model (e.g. groq-llama-3.3-70b below), which supports
+# real native tool calling and must be left alone.
+#
+# groq-llama-3.3-70b: a free-tier model (console.groq.com) that DOES
+# support real tool calling, added specifically so hermes' terminal tool
+# actually works end to end through this litellm instance — see README
+# "Real tool-calling: the Groq model". Needs GROQ_API_KEY in
+# litellm-secrets; run scripts/add-groq-key.sh to set it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config-file
+  namespace: ${NAMESPACE}
+data:
+  config.yaml: |
+    litellm_settings:
+      ssl_verify: false
+      callbacks: ["tool_choice_shim.proxy_handler_instance"]
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+    model_list:
+      - model_name: qwen3-8b-fp8
+        litellm_params:
+          model: hosted_vllm/isvc-qwen3-8b-fp8
+          api_base: https://isvc-qwen3-8b-fp8-predictor.${SHARED_MODELS_NAMESPACE}.svc.cluster.local:8443/v1
+          api_key: os.environ/KSERVE_TOKEN
+      - model_name: granite-31-8b-fp8
+        litellm_params:
+          model: hosted_vllm/isvc-granite-31-8b-fp8
+          api_base: https://isvc-granite-31-8b-fp8-predictor.${SHARED_MODELS_NAMESPACE}.svc.cluster.local:8443/v1
+          api_key: os.environ/KSERVE_TOKEN
+      - model_name: nemotron-nano-9b-v2-fp8
+        litellm_params:
+          model: hosted_vllm/isvc-nemotron-nano-9b-v2-fp8
+          api_base: https://isvc-nemotron-nano-9b-v2-fp8-predictor.${SHARED_MODELS_NAMESPACE}.svc.cluster.local:8443/v1
+          api_key: os.environ/KSERVE_TOKEN
+      - model_name: groq-llama-3.3-70b
+        litellm_params:
+          model: groq/llama-3.3-70b-versatile
+          api_key: os.environ/GROQ_API_KEY
+  tool_choice_shim.py: |
+    from litellm.integrations.custom_logger import CustomLogger
+
+    # Only these model_names route to a vLLM backend deployed without
+    # --enable-auto-tool-choice/--tool-call-parser (sandbox-shared-models,
+    # read-only — we can't fix it at the source). Every OTHER model (e.g.
+    # groq-llama-3.3-70b) supports real native tool calling and must NOT
+    # be touched here, or hermes' terminal tool would silently stop working
+    # even against a backend that's perfectly capable of executing it.
+    NO_NATIVE_TOOL_CHOICE_MODELS = {
+        "qwen3-8b-fp8",
+        "granite-31-8b-fp8",
+        "nemotron-nano-9b-v2-fp8",
+    }
+
+
+    class ForceNoToolChoice(CustomLogger):
+        async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+            if data.get("tools") and data.get("model") in NO_NATIVE_TOOL_CHOICE_MODELS:
+                data["tool_choice"] = "none"
+            return data
+
+
+    proxy_handler_instance = ForceNoToolChoice()

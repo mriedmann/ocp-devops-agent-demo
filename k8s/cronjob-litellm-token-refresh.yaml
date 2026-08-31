@@ -1,0 +1,46 @@
+# Restarts litellm-deployment every 45 minutes so its container command
+# re-reads a fresh ServiceAccount token before the ~1h projected token
+# expires (see deployment-litellm.yaml). Patches the Deployment directly
+# via the Kubernetes API using its own in-cluster token — reuses the
+# litellm-restarter ServiceAccount instead of shipping an oc/kubectl image.
+# Needs rolebinding-litellm-restarter.yaml applied first, or every run fails
+# with a 403.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: litellm-token-refresh
+  namespace: ${NAMESPACE}
+spec:
+  schedule: "*/45 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: litellm-restarter
+          restartPolicy: OnFailure
+          containers:
+            - name: restart-litellm
+              image: docker.litellm.ai/berriai/litellm:main-stable
+              command:
+                - python3
+                - -c
+                - |
+                  import urllib.request, ssl, json, datetime
+                  token = open('/var/run/secrets/kubernetes.io/serviceaccount/token').read().strip()
+                  ns = open('/var/run/secrets/kubernetes.io/serviceaccount/namespace').read().strip()
+                  patch = json.dumps({"spec": {"template": {"metadata": {"annotations": {
+                      "kubectl.kubernetes.io/restartedAt": datetime.datetime.utcnow().isoformat() + "Z"
+                  }}}}}).encode()
+                  url = f"https://kubernetes.default.svc/apis/apps/v1/namespaces/{ns}/deployments/litellm-deployment"
+                  req = urllib.request.Request(
+                      url, data=patch, method="PATCH",
+                      headers={"Authorization": "Bearer " + token,
+                               "Content-Type": "application/strategic-merge-patch+json"},
+                  )
+                  ctx = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+                  resp = urllib.request.urlopen(req, context=ctx, timeout=15)
+                  print(resp.getcode())

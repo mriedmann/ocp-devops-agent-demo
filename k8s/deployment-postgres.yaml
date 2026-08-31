@@ -1,0 +1,56 @@
+# Backs litellm's Admin UI. litellm's plain OpenAI-compatible API only needs
+# LITELLM_MASTER_KEY, but /ui/login itself requires a Postgres DATABASE_URL —
+# without one, logging into the UI fails with "Not connected to DB!" even
+# though curl-based API calls with the master key work fine (see README's
+# "Showcasing the UI externally" section).
+#
+# Uses Red Hat's certified rhel9/postgresql-16 image (not the upstream
+# postgres:* image) because it's designed to run as an arbitrary non-root UID
+# out of the box, which OpenShift's default restricted SCC enforces — the
+# upstream image's initdb assumes it owns UID 999 and fails under an
+# arbitrary UID. Pulling from registry.redhat.io needs a Red Hat pull
+# secret — this should already work in a Red Hat Developer Sandbox project
+# (same registry the RHOAI/KServe images come from); if the pod sits in
+# ImagePullBackOff with a 401/unauthorized, that pull secret is missing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single ReadWriteOnce PVC — avoid two pods mounting it during a rollout
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: registry.redhat.io/rhel9/postgresql-16:latest
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRESQL_USER
+              value: litellm
+            - name: POSTGRESQL_DATABASE
+              value: litellm
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-data

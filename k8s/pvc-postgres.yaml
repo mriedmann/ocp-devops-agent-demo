@@ -1,0 +1,16 @@
+# Persistent storage for postgres-deployment, so litellm's Admin UI data
+# (virtual keys, teams, usage/spend history) survives pod restarts. Deleting
+# this PVC (see README Cleanup) permanently destroys that data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
