@@ -1,0 +1,31 @@
+# The permanent, public entry point to litellm — both its OpenAI-compatible
+# API (/v1, what hermes-agent talks to) and its Admin UI (/ui) — so it's
+# usable without cluster/oc access or a running `oc port-forward`. Applied by
+# default as part of ./01-deploy.sh.
+#
+# This adds NO new auth of its own — every request still hits litellm's own
+# login/bearer-token check gated by general_settings.master_key (see
+# configmap-litellm-config.yaml and secret-litellm-secrets.example.yaml). TLS
+# is edge-terminated and HTTP is redirected to HTTPS so the master key is
+# never sent in the clear.
+#
+# Don't want litellm reachable from the public internet? Remove this Route
+# and fall back to ./03-port-forward.sh instead (see README):
+#   oc delete -f k8s/route-litellm.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: litellm
+  namespace: ${NAMESPACE}
+  labels:
+    app: litellm
+spec:
+  to:
+    kind: Service
+    name: litellm-service
+    weight: 100
+  port:
+    targetPort: 4000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

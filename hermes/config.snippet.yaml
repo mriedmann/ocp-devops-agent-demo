@@ -24,9 +24,15 @@
 #      hermes refuses to use it as the default model OR via an alias.
 #      It's excluded below; use it directly via curl/litellm if you need it.
 #
-# Prereq: scripts/03-port-forward.sh running in another terminal, and
-# LITELLM_MASTER_KEY exported in your shell (same value as the
-# litellm-secrets Secret — see README "Local hermes agent" section).
+# Prereq: LITELLM_MASTER_KEY exported in your shell (same value as the
+# litellm-secrets Secret — see README "Local hermes agent" section), plus
+# one of:
+#   - (default) run scripts/print-hermes-config.sh after ./01-deploy.sh —
+#     it prints this whole file with base_url rewritten to litellm's public
+#     Route, ready to merge as-is.
+#   - if you don't want litellm publicly reachable: remove k8s/route-litellm.yaml
+#     and use this file's base_url below (http://localhost:4000/v1) with
+#     scripts/03-port-forward.sh running in another terminal instead.
 #
 # groq-llama-3.3-70b (alias `groq` below) is the ONE model here where
 # hermes' terminal/tool-calling actually WORKS — see README "Real

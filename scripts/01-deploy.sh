@@ -63,14 +63,19 @@ apply k8s/rolebinding-litellm-restarter.yaml || {
   echo
 }
 
-# 4. App config + workload.
+# 4. App config + workload + public Route (the default way to reach litellm
+#    without cluster/oc access — see k8s/route-litellm.yaml for how to opt out).
 apply k8s/configmap-litellm-config.yaml
 apply k8s/deployment-litellm.yaml
 apply k8s/service-litellm.yaml
 apply k8s/cronjob-litellm-token-refresh.yaml
+apply k8s/route-litellm.yaml
 
 echo "Waiting for rollout..."
 oc rollout status deployment/litellm-deployment -n "$NAMESPACE" --timeout=180s
 
+ROUTE_HOST=$(oc get route litellm -n "$NAMESPACE" -o jsonpath='{.spec.host}')
+
 echo
-echo "Done. Next: ./02-verify.sh"
+echo "Done. litellm is reachable at: https://${ROUTE_HOST}"
+echo "Next: ./02-verify.sh, then ./print-hermes-config.sh for a ready-to-merge hermes config."

@@ -4,9 +4,12 @@ Reproducible setup for running [litellm](https://github.com/BerriAI/litellm) ins
 **Red Hat Developer Sandbox 30-day trial with the OpenShift AI (RHOAI) add-on**, fronting
 the sandbox's shared, pre-deployed KServe `InferenceService` vLLM models — and then
 pointing a local [hermes-agent](https://github.com/NousResearch/hermes-agent) at it over
-`oc port-forward`. Also wires in one free hosted model ([Groq](https://console.groq.com))
-behind the same litellm instance to demonstrate real tool-calling, which the RHOAI models
-can't do — see "Real tool-calling: the Groq model" below.
+a public OpenShift Route, so no cluster/`oc` access is needed on the machine running
+hermes. (Prefer not to expose litellm publicly? `oc port-forward` still works as a
+fallback — see "Accessing litellm" below.) Also wires in one free hosted model
+([Groq](https://console.groq.com)) behind the same litellm instance to demonstrate real
+tool-calling, which the RHOAI models can't do — see "Real tool-calling: the Groq model"
+below.
 
 ## Why this isn't just "point litellm at the model URL"
 
@@ -36,36 +39,40 @@ litellm model entry, so no `Authorization` header ever reached the predictor.
 ## Architecture
 
 ```
- laptop (WSL2)                          Red Hat Developer Sandbox
-┌─────────────────────┐                ┌───────────────────────────────────────────┐
-│ hermes-agent (CLI)   │  oc port-      │  <your>-dev project                       │
-│  base_url:           │  forward       │  ┌───────────────────────────────────┐    │
-│  localhost:4000/v1  ─┼───────────────▶│  │ litellm-deployment                 │    │
-│  key_env:             │  :4000        │  │  - reads KSERVE_TOKEN from its own │    │
-│  LITELLM_MASTER_KEY   │                │  │    SA token at container start    │────┼──┐
-└─────────────────────┘                │  │  - api_key: os.environ/KSERVE_TOKEN│    │  │
-                                        │  │  - master_key gates :4000 itself   │    │  │
-                                        │  └─────────────────────────────────────┘    │  │
-                                        │  ┌─────────────────────────────────────┐    │  │
-                                        │  │ litellm-token-refresh CronJob       │    │  │
-                                        │  │  restarts the Deployment every 45m  │    │  │
-                                        │  │  so KSERVE_TOKEN never goes stale   │    │  │
-                                        │  └─────────────────────────────────────┘    │  │
-                                        └───────────────────────────────────────────┘  │
-                                        ┌───────────────────────────────────────────┐  │
-                                        │  sandbox-shared-models project             │◀─┘
-                                        │  isvc-qwen3-8b-fp8-predictor      :8443    │
-                                        │  isvc-granite-31-8b-fp8-predictor :8443    │  each behind an
-                                        │  isvc-nemotron-nano-9b-v2-fp8-...  :8443    │  oauth-proxy sidecar
-                                        └───────────────────────────────────────────┘
+ laptop (anywhere)                      Red Hat Developer Sandbox
+
+┌────────────────────────────────────────┐   ┌─────────────────────────────────────┐   ┌────────────────────────────┐
+│ hermes-agent (CLI)                     │   │ litellm-deployment                  │   │ litellm-token-refresh      │
+│                                        │   │ (<your>-dev project)                │   │ CronJob                    │
+│ default:                               │   │                                     │   │                            │
+│   base_url: https://<route-host>/v1    │   │ - reached via Route "litellm"       │   │ restarts the Deployment    │
+│                                        │   │   (public, edge-TLS), or            │   │ every 45m so KSERVE_TOKEN  │
+│ fallback (no public Route):            │   │   oc port-forward :4000             │   │ never goes stale           │
+│   base_url: http://localhost:4000/v1   │   │ - reads KSERVE_TOKEN from its       │   └────────────────────────────┘
+│                                        │   │   own SA token at container start   │
+│ key_env: LITELLM_MASTER_KEY            │   │ - api_key: os.environ/KSERVE_TOKEN  │
+└────────────────────────────────────────┘   │ - master_key gates the proxy        │
+                                             └─────────────────────────────────────┘
+
+                                                 │ calls whichever model was requested
+                                                 ▼
+                                             ┌────────────────────────────────────┐
+                                             │ sandbox-shared-models project      │
+                                             │ (each predictor behind an          │
+                                             │  oauth-proxy sidecar, :8443)       │
+                                             │                                    │
+                                             │ isvc-qwen3-8b-fp8-predictor        │
+                                             │ isvc-granite-31-8b-fp8-predictor   │
+                                             │ isvc-nemotron-nano-9b-v2-fp8-...   │
+                                             └────────────────────────────────────┘
 ```
 
 ## Project layout
 
 ```
 k8s/       Kubernetes manifests (envsubst templates — ${NAMESPACE}, ${SHARED_MODELS_NAMESPACE})
-scripts/   bash: prereq check, deploy, verify, port-forward, model discovery, oc-debug helper
-hermes/    config.snippet.yaml — what to merge into ~/.hermes/config.yaml
+scripts/   bash: prereq check, deploy, verify, Route/port-forward access, model discovery, oc-debug helper
+hermes/    config.snippet.yaml — what to merge into ~/.hermes/config.yaml (or run scripts/print-hermes-config.sh)
 ```
 
 ## Prerequisites
@@ -108,8 +115,8 @@ oc get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 
 It also deploys a small Postgres instance (`k8s/deployment-postgres.yaml`,
 backed by a 1Gi PVC in `k8s/pvc-postgres.yaml`) and generates a
 `POSTGRES_PASSWORD`/`DATABASE_URL` pair in the same Secret. This is only needed for
-litellm's **Admin UI** — the plain API works fine without it — see "Showcasing the UI
-externally" below for why.
+litellm's **Admin UI** — the plain API works fine without it — see "Accessing litellm"
+below for why.
 
 ### If your sandbox's shared models differ from the ones in `k8s/configmap-litellm-config.yaml`
 
@@ -141,44 +148,47 @@ every model call starts 401ing until you restart it manually
 
 ## Using it directly (no hermes)
 
+`01-deploy.sh` applies a public Route by default, so this works from any machine with
+network access, no `oc` required:
+
 ```bash
-curl -s http://localhost:4000/v1/chat/completions \
+ROUTE_HOST=$(oc get route litellm -o jsonpath='{.spec.host}')
+curl -s "https://${ROUTE_HOST}/v1/chat/completions" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen3-8b-fp8","messages":[{"role":"user","content":"hi"}]}'
 ```
-(after starting `./03-port-forward.sh` in another terminal.) Swap `"model"` for
-`"groq-llama-3.3-70b"` to hit the Groq-backed entry instead (see "Real tool-calling: the
-Groq model" below — needs `./add-groq-key.sh` run first).
+Don't want litellm publicly reachable? Remove the Route (`oc delete -f
+k8s/route-litellm.yaml`) and use `http://localhost:4000/...` instead, after starting
+`./03-port-forward.sh` in another terminal. Swap `"model"` for `"groq-llama-3.3-70b"` to
+hit the Groq-backed entry instead (see "Real tool-calling: the Groq model" below — needs
+`./add-groq-key.sh` run first).
 
-## Showcasing the UI externally (optional)
+## Accessing litellm
 
-By default litellm's Service is `ClusterIP` — reachable only via `./03-port-forward.sh`
-on a machine with `oc` access. To let someone browse the Admin UI without cluster
-access (e.g. for a demo), expose it through an OpenShift Route:
+`01-deploy.sh` applies `k8s/route-litellm.yaml` by default (edge-terminated TLS, HTTP
+redirected to HTTPS), so litellm's `/v1` API and `/ui` Admin UI are both reachable
+without cluster/`oc` access — this is what makes hermes-agent (and anyone else) able to
+use it without a running `oc port-forward`. **It adds no new auth layer** — the Route
+just forwards to the same litellm proxy, whose Admin UI login and API are already gated
+by `LITELLM_MASTER_KEY` (`general_settings.master_key` in
+`k8s/configmap-litellm-config.yaml`). Get the URL and credentials any time with:
 
 ```bash
 cd scripts
-./expose-litellm-ui.sh
+./print-hermes-config.sh
 ```
 
-This applies `k8s/route-litellm-ui.yaml` (edge-terminated TLS, HTTP redirected to
-HTTPS) and prints the public URL plus login instructions. **It adds no new auth layer**
-— the Route just forwards to the same litellm proxy, whose Admin UI login and API are
-already gated by `LITELLM_MASTER_KEY` (`general_settings.master_key` in
-`k8s/configmap-litellm-config.yaml`). Log in at `https://<route-host>/ui` with username
-`admin` and that key as the password; retrieve it any time with:
+which prints the Admin UI URL (log in as `admin` with `LITELLM_MASTER_KEY` as the
+password) and a ready-to-merge hermes config block (see "Local hermes-agent setup"
+below). Anyone with the Route's URL can reach the login page, but not the API or UI
+content, without that key.
+
+Don't want litellm reachable from the public internet at all? Remove the Route and fall
+back to `oc port-forward` for both hermes and direct API access:
 
 ```bash
-oc get secret litellm-secrets -n "$NAMESPACE" -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d
-```
-
-Anyone with the Route's URL can reach the login page, but not the API or UI content
-without that key — treat the Route as temporary and tear it down once the showcase is
-over:
-
-```bash
-oc delete -f k8s/route-litellm-ui.yaml
+oc delete -f k8s/route-litellm.yaml
 ```
 
 ### Why the UI needs a database and the API doesn't
@@ -195,33 +205,36 @@ missing `DATABASE_URL` on your existing `litellm-secrets` Secret, adds it, and r
 
 1. Install hermes-agent (see its README) and run it once (`hermes`) so `~/.hermes/`
    exists.
-2. Start the tunnel and keep it running:
-   ```bash
-   cd scripts && ./03-port-forward.sh
-   ```
-3. In a separate terminal, export the master key so hermes can read it:
+2. Export the master key so hermes can read it:
    ```bash
    export LITELLM_MASTER_KEY="<value from the Secret, see above>"
    ```
    Add it to `~/.hermes/.env` instead if you want it to persist across shells.
-4. Merge `hermes/config.snippet.yaml` into `~/.hermes/config.yaml` (both blocks —
-   `model:` sets the default provider/model, `model_aliases:` adds a short name for the
-   other usable model). **Use the file as-is** — it already encodes two fixes verified
-   by actually running `hermes -z` against this setup (see "Known-good models only" and
+3. Generate and merge the config:
+   ```bash
+   cd scripts && ./print-hermes-config.sh
+   ```
+   Merge the printed block into `~/.hermes/config.yaml` (both blocks — `model:` sets the
+   default provider/model, `model_aliases:` adds a short name for the other usable
+   model). **Use it as printed** — it already encodes two fixes verified by actually
+   running `hermes -z` against this setup (see "Known-good models only" and
    "Tool-calling limitation" below); a naive `hermes setup`/auto-discovery config will
    hit both.
-5. Test with a one-shot prompt (no TUI, prints only the final answer):
+4. Test with a one-shot prompt (no TUI, prints only the final answer):
    ```bash
    hermes -z "Say OK and nothing else."
    ```
-6. Run `hermes` for the interactive REPL. Switch models mid-session with
+5. Run `hermes` for the interactive REPL. Switch models mid-session with
    `/model rhoai-nemotron`, or `hermes model` to pick interactively.
 
-**WSL2 note:** if hermes runs on native Windows while `oc port-forward` runs inside
-WSL2 (or vice versa), `localhost` doesn't route between them by default — use WSL2
-mirrored networking, or point `base_url` at the WSL2 VM's actual IP instead of
-`localhost`. Running both in the same shell environment (as this howto assumes)
-avoids the issue entirely.
+**No public Route (port-forward fallback):** if you removed `k8s/route-litellm.yaml` and
+run `./03-port-forward.sh` instead, merge `hermes/config.snippet.yaml` as-is (its
+`base_url` fields already point at `http://localhost:4000/v1`) rather than running
+`print-hermes-config.sh`. **WSL2 note:** if hermes runs on native Windows while `oc
+port-forward` runs inside WSL2 (or vice versa), `localhost` doesn't route between them by
+default — use WSL2 mirrored networking, or point `base_url` at the WSL2 VM's actual IP
+instead of `localhost`. Running both in the same shell environment avoids the issue
+entirely.
 
 ### Known-good models only: qwen3-8b-fp8 doesn't qualify
 
@@ -271,9 +284,10 @@ itself, still mandatorily routed through this same litellm instance — we added
 This is the point of fronting everything with litellm rather than pointing hermes
 straight at a model: litellm-on-OpenShift is a single control plane over a *mix* of
 self-hosted (the RHOAI predictors) and hosted (Groq) models. hermes only ever talks to
-`localhost:4000` — it has no idea, and doesn't need to know, that `groq-llama-3.3-70b`'s
-tokens run on Groq's infrastructure instead of cluster GPUs. Swapping, adding, or
-removing backends is a `model_list` edit, never a hermes-side change.
+litellm's proxy (over the Route, or `localhost:4000` via port-forward) — it has no idea,
+and doesn't need to know, that `groq-llama-3.3-70b`'s tokens run on Groq's infrastructure
+instead of cluster GPUs. Swapping, adding, or removing backends is a `model_list` edit,
+never a hermes-side change.
 
 **Setup** (one-time, after `01-deploy.sh`):
 1. Get a free key at [console.groq.com/keys](https://console.groq.com/keys) — no card
@@ -327,12 +341,12 @@ Override the model with `HERMES_MODEL=nemotron-nano-9b-v2-fp8 ./oc-debug.sh ...`
 
 ```bash
 oc delete -f k8s/cronjob-litellm-token-refresh.yaml
+oc delete -f k8s/route-litellm.yaml
 oc delete -f k8s/deployment-litellm.yaml -f k8s/service-litellm.yaml -f k8s/configmap-litellm-config.yaml
 oc delete -f k8s/rolebinding-litellm-restarter.yaml -f k8s/serviceaccount-litellm-restarter.yaml
 oc delete -f k8s/deployment-postgres.yaml -f k8s/service-postgres.yaml
 oc delete -f k8s/pvc-postgres.yaml   # WARNING: permanently deletes Admin UI data (keys, usage history)
 oc delete secret litellm-secrets
-oc delete -f k8s/route-litellm-ui.yaml --ignore-not-found
 ```
 
 ## Troubleshooting
@@ -343,7 +357,7 @@ oc delete -f k8s/route-litellm-ui.yaml --ignore-not-found
 | 401s starting ~1h after a restart | Token-refresh CronJob isn't running (missing RoleBinding) | `oc apply -f k8s/rolebinding-litellm-restarter.yaml`, check `oc get cronjob,jobs -l` |
 | `model not found` from vLLM (not litellm) | `litellm_params.model` doesn't match the predictor's `--served-model-name` | Must be `hosted_vllm/<InferenceService name>`, e.g. `hosted_vllm/isvc-qwen3-8b-fp8` |
 | SSL errors from litellm | Predictor's TLS cert is signed by OpenShift's internal service-serving CA | `ssl_verify: false` in `litellm_settings` (already set) — or mount `openshift-service-ca.crt` and point litellm at it if you want real verification |
-| hermes can't reach `localhost:4000` | Port-forward not running, or WSL2/Windows networking split | Restart `./03-port-forward.sh`; see WSL2 note above |
+| hermes can't reach litellm | Route not applied yet (`oc get route litellm`), stale host baked into `~/.hermes/config.yaml` (re-run `./print-hermes-config.sh` after any redeploy), or — if using the port-forward fallback — the tunnel isn't running / a WSL2-Windows networking split | Re-run `./print-hermes-config.sh`, or restart `./03-port-forward.sh` and check the WSL2 note above |
 | hermes: `"auto" tool choice requires --enable-auto-tool-choice...` | `tool_choice_shim.py` callback isn't loaded (old ConfigMap, or `litellm_settings.callbacks` missing) | Redeploy `k8s/configmap-litellm-config.yaml`, check litellm pod logs for import errors, `oc rollout restart deployment/litellm-deployment` |
 | hermes: `"Context length exceeded (N tokens). Cannot compress further"` for a *tiny* prompt | Misleading — hermes' error classifier mis-files a `ContextWindowExceededError` as "conversation too big". Real cause: `max_tokens` defaulted to the model's full context window, leaving no room for hermes' ~15K tokens of tool-schema overhead | Set `model.max_tokens: 8192` (already in `hermes/config.snippet.yaml`) |
 | hermes: `"Model ... has a context window of ... below the minimum 64,000"` | That model's `--max-model-len` is under 64K (true for `qwen3-8b-fp8` here) | Use a model with ≥64K context (`granite-31-8b-fp8`, `nemotron-nano-9b-v2-fp8`) |
