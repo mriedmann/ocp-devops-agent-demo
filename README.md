@@ -230,7 +230,7 @@ missing `DATABASE_URL` on your existing `litellm-secrets` Secret, adds it, and r
    ```bash
    opencode run "Say OK and nothing else."
    ```
-5. Run `opencode` for the interactive TUI. Switch models mid-session with the `/models`
+5. Run `opencode` for the interactive TUI (default model: `nex-n2.5-pro`, via OpenRouter). Switch models mid-session with the `/models`
    slash command, or pass `-m litellm/nemotron-nano-9b-v2-fp8` to `opencode run` for a
    one-off call on a different model.
 

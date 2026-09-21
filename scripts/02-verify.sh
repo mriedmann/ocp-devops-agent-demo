@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Exercises the running litellm pod end-to-end: lists configured models,
-# then sends a tiny chat completion to each and reports pass/fail. Runs the
+# then sends a tiny chat completion to the verify model(s) and reports pass/fail,
+# and finally checks the OpenShift MCP gateway.
+#
+# Env vars:
+#   VERIFY_MODELS   comma-separated model names to test, or "all" (default: nex-n2.5-pro) Runs the
 # checks *inside* the pod (via oc exec) since these are cluster-internal
 # hostnames not reachable from your laptop without port-forwarding.
 set -euo pipefail
@@ -11,18 +15,27 @@ POD=$(oc get pods -n "$NAMESPACE" -l app=litellm -o jsonpath='{.items[0].metadat
 [ -n "$POD" ] || { echo "No litellm pod found in $NAMESPACE"; exit 1; }
 echo "Using pod: $POD"
 
+VERIFY_MODELS="${VERIFY_MODELS:-nex-n2.5-pro}"
 MASTER_KEY=$(oc get secret litellm-secrets -n "$NAMESPACE" -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
 
 oc exec -n "$NAMESPACE" "$POD" -- python3 -c "
 import urllib.request, urllib.error, json, sys
 
 key = '$MASTER_KEY'
+wanted = '$VERIFY_MODELS'
 base = 'http://localhost:4000'
 headers = {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'}
 
 req = urllib.request.Request(base + '/v1/models', headers=headers)
 models = [m['id'] for m in json.loads(urllib.request.urlopen(req, timeout=10).read())['data']]
 print('Configured models:', models)
+
+if wanted != 'all':
+    missing = [m for m in wanted.split(',') if m not in models]
+    if missing:
+        print('Not configured in litellm:', missing)
+        sys.exit(1)
+    models = wanted.split(',')
 
 failed = []
 for m in models:
