@@ -33,6 +33,10 @@
         "nemotron-3.5-lightning": {
           "name": "Nemotron 3.5 Lightning (tool-calling, via OpenRouter)",
           "limit": { "context": 1000000, "output": 65536 }
+        },
+        "qwen3.8-27b": {
+          "name": "Qwen3.8 27B (tool-calling, via OpenRouter)",
+          "limit": { "context": 262144, "output": 65536 }
         }
       }
     }

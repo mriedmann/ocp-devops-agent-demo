@@ -83,6 +83,10 @@ data:
         litellm_params:
           model: openrouter/nvidia/nemotron-3.5-lightning:free
           api_key: os.environ/OPENROUTER_API_KEY
+      - model_name: qwen3.8-27b
+        litellm_params:
+          model: openrouter/qwen/qwen3.8-27b:free
+          api_key: os.environ/OPENROUTER_API_KEY
   tool_choice_shim.py: |
     from litellm.integrations.custom_logger import CustomLogger
 
