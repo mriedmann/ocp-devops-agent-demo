@@ -31,6 +31,11 @@
 # touch any other model (e.g. nemotron-3.5-lightning below), which supports
 # real native tool calling and must be left alone.
 #
+# MCP note: mcp_servers registers the in-cluster OpenShift MCP server
+# (deployment-openshift-mcp.yaml, read-only) with litellm's MCP gateway.
+# Clients reach it at <litellm>/mcp/openshift with the same master key as the
+# LLM API. Only models with real tool calling can use it (see below).
+#
 # nemotron-3.5-lightning: a free model on OpenRouter (openrouter.ai) that
 # DOES support real tool calling, added specifically so opencode's own
 # tools actually work end to end through this litellm instance — see
@@ -53,6 +58,10 @@ data:
       callbacks: ["tool_choice_shim.proxy_handler_instance"]
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY
+    mcp_servers:
+      openshift:
+        url: http://openshift-mcp-service:8080/mcp
+        transport: http
     model_list:
       - model_name: qwen3-8b-fp8
         litellm_params:

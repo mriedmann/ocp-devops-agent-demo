@@ -1,0 +1,20 @@
+# Read-only access for the OpenShift MCP server, scoped to this namespace
+# (built-in ClusterRole "view" bound by a namespaced RoleBinding). "view"
+# excludes Secrets. To let the MCP server change things, bind "edit" instead
+# and drop --read-only from deployment-openshift-mcp.yaml. This is
+# intentionally NOT applied by an agent automatically — granting RBAC is
+# treated as a sensitive action, so run this yourself with your own oc/kubectl
+# session.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshift-mcp-view
+  namespace: ${NAMESPACE}
+subjects:
+  - kind: ServiceAccount
+    name: openshift-mcp
+    namespace: ${NAMESPACE}
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io

@@ -63,6 +63,21 @@ apply k8s/rolebinding-litellm-restarter.yaml || {
   echo
 }
 
+# 3b. OpenShift MCP server (read-only), registered with litellm's MCP gateway
+#     in the ConfigMap below. Same RBAC caveat as the restarter above.
+apply k8s/serviceaccount-openshift-mcp.yaml
+apply k8s/rolebinding-openshift-mcp.yaml || {
+  echo
+  echo "WARNING: could not create the RoleBinding for openshift-mcp (likely"
+  echo "insufficient RBAC-grant permissions). The MCP server will start but"
+  echo "every tool call will fail with 403 until this is applied:"
+  echo "  oc apply -f k8s/rolebinding-openshift-mcp.yaml"
+  echo
+}
+apply k8s/deployment-openshift-mcp.yaml
+apply k8s/service-openshift-mcp.yaml
+oc rollout status deployment/openshift-mcp -n "$NAMESPACE" --timeout=120s
+
 # 4. App config + workload + public Route (the default way to reach litellm
 #    without cluster/oc access — see k8s/route-litellm.yaml for how to opt out).
 apply k8s/configmap-litellm-config.yaml

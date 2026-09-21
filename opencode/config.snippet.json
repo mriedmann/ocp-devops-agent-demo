@@ -1,6 +1,14 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "litellm/granite-31-8b-fp8",
+  "mcp": {
+    "openshift": {
+      "type": "remote",
+      "url": "http://localhost:4000/mcp/openshift",
+      "headers": { "Authorization": "Bearer {env:LITELLM_MASTER_KEY}" },
+      "enabled": true
+    }
+  },
   "provider": {
     "litellm": {
       "npm": "@ai-sdk/openai-compatible",

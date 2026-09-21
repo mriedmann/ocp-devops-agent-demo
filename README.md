@@ -393,9 +393,31 @@ It runs the `oc` command locally, then sends the output to opencode with a promp
 it to flag crashloops, pending/failed pods, image-pull errors, high restart counts, etc.
 Override the model with `OPENCODE_MODEL=nemotron-nano-9b-v2-fp8 ./oc-debug.sh ...`.
 
+## OpenShift MCP server via litellm
+
+`01-deploy.sh` also deploys a **read-only** OpenShift MCP server
+([containers/kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server))
+in your project and registers it with litellm's MCP gateway (`mcp_servers` in
+`k8s/configmap-litellm-config.yaml`). It has no Route of its own: opencode reaches it at
+`<litellm>/mcp/openshift` with the same `LITELLM_MASTER_KEY` it uses for the LLM API, so no
+local Node or kubeconfig is needed (this replaces running `npx kubernetes-mcp-server`
+locally). `opencode/config.snippet.json` carries the matching `mcp` block, and
+`print-opencode-config.sh` merges it like the rest.
+
+- **Permissions:** the `openshift-mcp` ServiceAccount is bound to the built-in `view`
+  ClusterRole in your namespace only (no Secrets), and the server runs with `--read-only`.
+  Like the restarter, the RoleBinding may need applying by hand:
+  `oc apply -f k8s/rolebinding-openshift-mcp.yaml`. To allow writes, bind `edit` instead and
+  drop `--read-only` from `k8s/deployment-openshift-mcp.yaml`.
+- **Models:** the tools are only usable with a model that supports real tool calling, i.e.
+  `nemotron-3.5-lightning` (see "Tool-calling limitation").
+- **Check it:** `./scripts/02-verify.sh` lists the gateway's tools as its last step.
+
 ## Cleanup
 
 ```bash
+oc delete -f k8s/deployment-openshift-mcp.yaml -f k8s/service-openshift-mcp.yaml
+oc delete -f k8s/rolebinding-openshift-mcp.yaml -f k8s/serviceaccount-openshift-mcp.yaml
 oc delete -f k8s/cronjob-litellm-token-refresh.yaml
 oc delete -f k8s/route-litellm.yaml
 oc delete -f k8s/deployment-litellm.yaml -f k8s/service-litellm.yaml -f k8s/configmap-litellm-config.yaml
@@ -419,6 +441,7 @@ oc delete secret litellm-secrets
 | opencode runs but never actually executes a command it says it will | Expected — see "Tool-calling limitation" above | Use `scripts/oc-debug.sh` instead of asking opencode to run `oc` itself, or switch to `/models` → the OpenRouter entry |
 | `nemotron-3.5-lightning` call fails with an auth/401-style error from litellm | `OPENROUTER_API_KEY` not set, stale, or invalid in `litellm-secrets` | Run `./add-openrouter-key.sh` with a fresh key from [openrouter.ai/keys](https://openrouter.ai/keys) |
 | OpenRouter works via curl but not via opencode | `opencode/config.snippet.json`'s `nemotron-3.5-lightning` entry not merged into `~/.config/opencode/opencode.json`, or still on an old config without it | Re-merge the snippet, `opencode run -m litellm/nemotron-3.5-lightning "hi"` to test directly |
+| opencode's `openshift` MCP tools are missing, or calls return 403 | `mcp` block not merged into `opencode.json`, `openshift-mcp` pod not Ready, or its RoleBinding wasn't applied | Re-run `./print-opencode-config.sh`, `oc get pods -l app=openshift-mcp`, `oc apply -f k8s/rolebinding-openshift-mcp.yaml` |
 | `Gateway Time-out` from a slower tool-calling round trip (a reasoning model plus opencode's full tool-schema payload) | OpenShift's default Route backend timeout (30s) is too short | Already raised to 120s via the `haproxy.router.openshift.io/timeout` annotation in `k8s/route-litellm.yaml`; if you still see this, raise it further |
 | Containerized opencode (`run-opencode-container.sh`) starts but can't authenticate | `LITELLM_MASTER_KEY` wasn't exported and couldn't be fetched via `oc` (see the script's warning) | Export `LITELLM_MASTER_KEY` before running the script, or make sure `oc` is logged in with access to the `litellm-secrets` Secret |
 | litellm pod stuck `0/1 Ready` after a redeploy, `oc describe pod` shows the `readinessProbe` failing with 401/403 on `/health/readiness` | Known upstream regression in some litellm builds where that endpoint unexpectedly requires `x-litellm-key` ([BerriAI/litellm#8795](https://github.com/BerriAI/litellm/issues/8795)) | Check litellm pod logs for the actual error; if it's this, pin to an unaffected `litellm` image tag, or open an issue upstream — the readinessProbe itself (`k8s/deployment-litellm.yaml`) is unauthenticated by design per litellm's docs |

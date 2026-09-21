@@ -35,5 +35,23 @@ for m in models:
         print(f'  {m}: FAILED ({e})')
         failed.append(m)
 
+
+# MCP gateway: initialize + tools/list against the registered openshift server.
+mcp_headers = dict(headers, Accept='application/json, text/event-stream')
+def rpc(method, params, id):
+    body = json.dumps({'jsonrpc': '2.0', 'id': id, 'method': method, 'params': params}).encode()
+    req = urllib.request.Request(base + '/mcp/openshift', data=body, headers=mcp_headers)
+    return urllib.request.urlopen(req, timeout=30).read().decode()
+
+try:
+    rpc('initialize', {'protocolVersion': '2025-03-26', 'capabilities': {}, 'clientInfo': {'name': 'verify', 'version': '0'}}, 1)
+    out = rpc('tools/list', {}, 2)
+    print('  mcp/openshift: OK' if 'pods_list' in out else '  mcp/openshift: FAILED (no pods_list tool)')
+    if 'pods_list' not in out:
+        failed.append('mcp/openshift')
+except Exception as e:
+    print(f'  mcp/openshift: FAILED ({e})')
+    failed.append('mcp/openshift')
+
 sys.exit(1 if failed else 0)
 "

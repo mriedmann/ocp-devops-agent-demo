@@ -1,0 +1,47 @@
+# OpenShift/Kubernetes MCP server (containers/kubernetes-mcp-server) serving
+# Streamable HTTP on :8080/mcp. With no kubeconfig it falls back to the pod's
+# in-cluster config, i.e. the openshift-mcp ServiceAccount. --read-only hides
+# every write tool (create/delete/exec/scale) regardless of RBAC.
+#
+# Not exposed by a Route: only litellm (registered in
+# configmap-litellm-config.yaml under mcp_servers) reaches it, so clients must
+# present the litellm master key to use these tools.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openshift-mcp
+  namespace: ${NAMESPACE}
+  labels:
+    app: openshift-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openshift-mcp
+  template:
+    metadata:
+      labels:
+        app: openshift-mcp
+    spec:
+      serviceAccountName: openshift-mcp
+      containers:
+        - name: openshift-mcp
+          image: quay.io/containers/kubernetes_mcp_server:v0.0.67
+          args:
+            - --port=8080
+            - --read-only
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
