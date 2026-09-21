@@ -14,7 +14,7 @@ echo "Using pod: $POD"
 MASTER_KEY=$(oc get secret litellm-secrets -n "$NAMESPACE" -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d)
 
 oc exec -n "$NAMESPACE" "$POD" -- python3 -c "
-import urllib.request, json, sys
+import urllib.request, urllib.error, json, sys
 
 key = '$MASTER_KEY'
 base = 'http://localhost:4000'
@@ -31,6 +31,14 @@ for m in models:
     try:
         code = urllib.request.urlopen(req, timeout=30).getcode()
         print(f'  {m}: {code} OK')
+    except urllib.error.HTTPError as e:
+        # Free OpenRouter models are often rate-limited upstream; the proxy
+        # relayed the 429 fine, so don't fail the whole check for it.
+        if e.code == 429:
+            print(f'  {m}: 429 rate-limited upstream (skipped)')
+        else:
+            print(f'  {m}: FAILED ({e})')
+            failed.append(m)
     except Exception as e:
         print(f'  {m}: FAILED ({e})')
         failed.append(m)

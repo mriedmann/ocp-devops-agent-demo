@@ -111,7 +111,11 @@ if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
   fi
 fi
 
-exec "$ENGINE" run --rm -it \
+# Only allocate a TTY when one is attached, so one-shot runs work from CI/pipes.
+TTY_FLAGS=(-i)
+[ -t 0 ] && [ -t 1 ] && TTY_FLAGS=(-it)
+
+exec "$ENGINE" run --rm "${TTY_FLAGS[@]}" \
   -e LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" \
   -e LITELLM_URL="$LITELLM_URL" \
   -v "$TARGET_DIR:/workspace" \
