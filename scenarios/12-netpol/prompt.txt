@@ -1,0 +1,1 @@
+In namespace ${NAMESPACE}, demo-client cannot reach the Service demo-server, but both pods are Running, the Service has endpoints and the name resolves. Why, and what is the smallest fix?

@@ -1,0 +1,1 @@
+The pod demo-slow in namespace ${NAMESPACE} keeps getting restarted, yet the application itself never reports an error. What is happening and how do I stop it?

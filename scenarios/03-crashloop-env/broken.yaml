@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-api
+  labels: {app: demo-api, ocp-agent-demo: 03-crashloop-env}
+spec:
+  containers:
+    - name: api
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "demo-api starting"
+          if [ -z "$DB_HOST" ]; then
+            echo "FATAL: required environment variable DB_HOST is not set" >&2
+            exit 1
+          fi
+          echo "connected to $DB_HOST"
+          sleep 3600
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 50m, memory: 32Mi}

@@ -1,0 +1,1 @@
+The deployment demo-legacy in namespace ${NAMESPACE} never creates a pod. Find out why and how to fix it on OpenShift.

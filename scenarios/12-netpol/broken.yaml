@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-server
+  labels: {app: demo-server, ocp-agent-demo: 12-netpol}
+spec:
+  containers:
+    - name: httpd
+      image: registry.access.redhat.com/ubi9/httpd-24:latest
+      ports: [{containerPort: 8080}]
+      resources:
+        requests: {cpu: 5m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-server
+  labels: {ocp-agent-demo: 12-netpol}
+spec:
+  selector: {app: demo-server}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-client
+  labels: {app: demo-client, ocp-agent-demo: 12-netpol}
+spec:
+  containers:
+    - name: client
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            if curl -sS -o /dev/null --max-time 3 http://demo-server:8080/; then echo "server OK"; else echo "server unreachable (timeout)"; fi
+            sleep 10
+          done
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-client-egress
+  labels: {ocp-agent-demo: 12-netpol}
+spec:
+  podSelector:
+    matchLabels: {app: demo-client}
+  policyTypes: [Egress]
+  egress:
+    # DNS only (Service port 53, CoreDNS pod port 5353)
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+        - {protocol: UDP, port: 5353}
+        - {protocol: TCP, port: 5353}

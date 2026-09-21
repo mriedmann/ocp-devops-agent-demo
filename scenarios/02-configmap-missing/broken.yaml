@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-app
+  labels: {app: demo-app, ocp-agent-demo: 02-configmap-missing}
+spec:
+  containers:
+    - name: app
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      command: ["sh", "-c", "echo mode=$APP_MODE; sleep 3600"]
+      env:
+        - name: APP_MODE
+          valueFrom:
+            configMapKeyRef: {name: demo-app-config, key: mode}
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 50m, memory: 32Mi}

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-worker
+  labels: {app: demo-worker, ocp-agent-demo: 04-oomkilled}
+spec:
+  containers:
+    - name: worker
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      # Needs roughly 60-100Mi while it loads its dataset.
+      command:
+        - sh
+        - -c
+        - |
+          echo loading dataset
+          x=$(head -c 30000000 /dev/zero | tr '\0' a)
+          echo loaded ${#x} bytes
+          sleep 3600
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 100m, memory: 32Mi}

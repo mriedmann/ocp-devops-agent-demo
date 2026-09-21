@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-site
+  labels: {app: demo-site, ocp-agent-demo: 07-no-endpoints}
+spec:
+  containers:
+    - name: httpd
+      image: registry.access.redhat.com/ubi9/httpd-24:latest
+      ports: [{containerPort: 8080}]
+      resources:
+        requests: {cpu: 5m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-site
+  labels: {ocp-agent-demo: 07-no-endpoints}
+spec:
+  selector: {app: demo-site}
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: demo-site
+  labels: {ocp-agent-demo: 07-no-endpoints}
+spec:
+  to: {kind: Service, name: demo-site}
+  port: {targetPort: http}
+  tls: {termination: edge}

@@ -1,0 +1,1 @@
+We just released a new version of deployment demo-shop in namespace ${NAMESPACE}. The rollout seems stuck. What is going on, is the shop still serving traffic, and what should we do?

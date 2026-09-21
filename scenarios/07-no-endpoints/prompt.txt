@@ -1,0 +1,1 @@
+The route demo-site in namespace ${NAMESPACE} answers "Application is not available", although the pod demo-site is Running. Find the cause and propose the fix.

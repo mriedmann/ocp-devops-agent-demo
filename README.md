@@ -74,6 +74,7 @@ k8s/       Kubernetes manifests (envsubst templates — ${NAMESPACE}, ${SHARED_M
 scripts/   bash: prereq check, deploy, verify, Route/port-forward access, model discovery, oc-debug helper
 opencode/  config.snippet.json — what to merge into ~/.config/opencode/opencode.json (or run scripts/print-opencode-config.sh)
            Dockerfile, entrypoint.sh — portable opencode container image, see scripts/run-opencode-container.sh
+scenarios/ Workshop scenarios (broken apps for the agent to debug), driven by scripts/scenario.sh
 ```
 
 ## Prerequisites
@@ -415,6 +416,15 @@ locally). `opencode/config.snippet.json` carries the matching `mcp` block, and
 - **Models:** the tools are only usable with a model that supports real tool calling, i.e.
   `nemotron-3.5-lightning` (see "Tool-calling limitation").
 - **Check it:** `./scripts/02-verify.sh` lists the gateway's tools as its last step.
+
+## Workshop scenarios (broken apps for the agent to debug)
+
+`scenarios/` holds 13 tiny broken-app scenarios (ImagePullBackOff, OOMKilled, quota, SCC,
+Service selector, stuck rollout, NetworkPolicy, ...) and `scripts/scenario.sh` starts, resets
+and advances them one at a time, prints the prompt for the agent and applies the fix
+afterwards. Quick start: `./scripts/scenario.sh preflight`, `./scripts/scenario.sh up 1`,
+`./scripts/scenario.sh next`, `./scripts/scenario.sh down`. Details in
+[scenarios/README.md](scenarios/README.md).
 
 ## Cleanup
 

@@ -1,0 +1,1 @@
+In namespace ${NAMESPACE} the pod demo-frontend cannot reach its backend. The frontend pod is Running. Find the cause and propose a fix.

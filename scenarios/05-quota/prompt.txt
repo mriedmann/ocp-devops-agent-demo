@@ -1,0 +1,1 @@
+The deployment demo-batch in namespace ${NAMESPACE} shows 0/1 ready and there is no pod at all. Why, and how do I fix it?

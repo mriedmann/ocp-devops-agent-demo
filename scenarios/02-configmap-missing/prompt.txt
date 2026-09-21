@@ -1,0 +1,1 @@
+The pod demo-app in namespace ${NAMESPACE} is stuck and its container never starts. What is wrong and how do I fix it?

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-batch
+  labels: {app: demo-batch, ocp-agent-demo: 05-quota}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels: {app: demo-batch}
+  template:
+    metadata:
+      labels: {app: demo-batch, ocp-agent-demo: 05-quota}
+    spec:
+      containers:
+        - name: batch
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command: ["sleep", "3600"]
+          resources:
+            requests: {cpu: "8", memory: 8Mi}
+            limits: {cpu: "8", memory: 32Mi}

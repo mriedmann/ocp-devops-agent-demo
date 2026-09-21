@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-legacy
+  labels: {app: demo-legacy, ocp-agent-demo: 06-scc-root}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels: {app: demo-legacy}
+  template:
+    metadata:
+      labels: {app: demo-legacy, ocp-agent-demo: 06-scc-root}
+    spec:
+      containers:
+        - name: legacy
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command: ["sleep", "3600"]
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {cpu: 50m, memory: 32Mi}

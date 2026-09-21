@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-web
+  labels: {app: demo-web, ocp-agent-demo: 01-imagepull}
+spec:
+  containers:
+    - name: web
+      image: registry.access.redhat.com/ubi9/httpd-24:latest
+      resources:
+        requests: {cpu: 5m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}

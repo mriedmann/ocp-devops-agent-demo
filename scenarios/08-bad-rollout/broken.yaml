@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-shop
+  labels: {app: demo-shop, ocp-agent-demo: 08-bad-rollout}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  progressDeadlineSeconds: 60
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: demo-shop}
+  template:
+    metadata:
+      labels: {app: demo-shop, ocp-agent-demo: 08-bad-rollout}
+      annotations: {app-version: "2.0"}
+    spec:
+      containers:
+        - name: shop
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command: ["sh", "-c", "echo shop v2.0 ready; sleep 3600"]
+          readinessProbe:
+            exec: {command: ["cat", "/tmp/ready"]}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {cpu: 50m, memory: 32Mi}

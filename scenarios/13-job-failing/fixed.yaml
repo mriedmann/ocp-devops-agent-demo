@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-report
+  labels: {app: demo-report, ocp-agent-demo: 13-job-failing}
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {app: demo-report, ocp-agent-demo: 13-job-failing}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: report
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "generating daily report"
+              if [ ! -r /etc/os-release ]; then
+                echo "ERROR: input file /etc/os-release not found" >&2
+                exit 2
+              fi
+              echo "report done"
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {cpu: 50m, memory: 32Mi}
