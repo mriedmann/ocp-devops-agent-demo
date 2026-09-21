@@ -87,6 +87,26 @@ data:
         litellm_params:
           model: openrouter/qwen/qwen3.8-27b:free
           api_key: os.environ/OPENROUTER_API_KEY
+      - model_name: nex-n2.5-pro
+        litellm_params:
+          model: openrouter/nex-agi/nex-n2.5-pro:free
+          api_key: os.environ/OPENROUTER_API_KEY
+      - model_name: north-mini-code
+        litellm_params:
+          model: openrouter/cohere/north-mini-code:free
+          api_key: os.environ/OPENROUTER_API_KEY
+      - model_name: openrouter-free
+        litellm_params:
+          model: openrouter/openrouter/free
+          api_key: os.environ/OPENROUTER_API_KEY
+      # DEACTIVATED (paid): Anthropic via the credential "Antropic API
+      # (ocp-showcase)" stored in litellm's DB (Admin UI > Credentials).
+      # Uncomment to enable, and add a matching entry to
+      # opencode/config.snippet.json.
+      # - model_name: claude-sonnet-5
+      #   litellm_params:
+      #     model: anthropic/claude-sonnet-5
+      #     litellm_credential_name: "Antropic API (ocp-showcase)"
   tool_choice_shim.py: |
     from litellm.integrations.custom_logger import CustomLogger
 

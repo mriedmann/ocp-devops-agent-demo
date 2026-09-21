@@ -37,6 +37,18 @@
         "qwen3.8-27b": {
           "name": "Qwen3.8 27B (tool-calling, via OpenRouter)",
           "limit": { "context": 262144, "output": 65536 }
+        },
+        "nex-n2.5-pro": {
+          "name": "Nex N2.5 Pro (tool-calling, via OpenRouter)",
+          "limit": { "context": 262144, "output": 65536 }
+        },
+        "north-mini-code": {
+          "name": "Cohere North Mini Code (tool-calling, via OpenRouter)",
+          "limit": { "context": 256000, "output": 32000 }
+        },
+        "openrouter-free": {
+          "name": "OpenRouter Free (auto-router, tool-calling)",
+          "limit": { "context": 200000, "output": 32000 }
         }
       }
     }
