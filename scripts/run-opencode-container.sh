@@ -24,6 +24,9 @@
 # Env vars:
 #   CONTAINER_ENGINE     override engine (default: docker if present, else podman)
 #   OPENCODE_IMAGE        override image tag (default: ocp-devops-agent/opencode:local)
+#   LITELLM_URL           litellm base URL (https://<route-host>) substituted for
+#                         http://localhost:4000 if the host config still uses the
+#                         port-forward address (default: looked up from the Route via oc)
 #   NAMESPACE             oc project to look up litellm-secrets in, if LITELLM_MASTER_KEY
 #                         isn't already exported (default: current `oc project`)
 set -euo pipefail
@@ -93,7 +96,29 @@ if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
   fi
 fi
 
-exec "$ENGINE" run --rm -it \
+# Inside the container `localhost` is the container itself, so a config still
+# pointing at the port-forward template (http://localhost:4000) can never work
+# there. Rewrite it to litellm's public Route for this run only — the host
+# file is left untouched.
+if grep -q 'http://localhost:4000' "$OPENCODE_CONFIG"; then
+  if [ -z "${LITELLM_URL:-}" ]; then
+    NAMESPACE="${NAMESPACE:-$(oc project -q 2>/dev/null || true)}"
+    HOST=$(oc get route litellm -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || true)
+    [ -n "$HOST" ] && LITELLM_URL="https://${HOST}"
+  fi
+  if [ -z "${LITELLM_URL:-}" ]; then
+    echo "Config points at http://localhost:4000, which the container can't reach, and the litellm Route couldn't be found via oc. Set LITELLM_URL=https://<route-host> or run ./print-opencode-config.sh." >&2
+    exit 1
+  fi
+  echo "Using litellm Route ${LITELLM_URL} (config points at localhost:4000)."
+  TMP_CONFIG=$(mktemp)
+  trap 'rm -f "$TMP_CONFIG"' EXIT
+  sed "s#http://localhost:4000#${LITELLM_URL}#g" "$OPENCODE_CONFIG" > "$TMP_CONFIG"
+  OPENCODE_CONFIG="$TMP_CONFIG"
+fi
+
+# No `exec` here: it would replace the shell and skip the EXIT trap above.
+"$ENGINE" run --rm -it \
   -e LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" \
   -v "$TARGET_DIR:/workspace" \
   -v "$OPENCODE_CONFIG:/root/.config/opencode/opencode.json:ro" \
