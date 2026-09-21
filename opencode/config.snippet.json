@@ -4,8 +4,8 @@
   "mcp": {
     "openshift": {
       "type": "remote",
-      "url": "http://localhost:4000/mcp/openshift",
-      "headers": { "Authorization": "Bearer {env:LITELLM_MASTER_KEY}" },
+      "url": "{env:LITELLM_URL}/openshift/mcp",
+      "headers": { "x-litellm-api-key": "Bearer {env:LITELLM_MASTER_KEY}" },
       "enabled": true
     }
   },
@@ -14,7 +14,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "litellm (sandbox)",
       "options": {
-        "baseURL": "http://localhost:4000/v1",
+        "baseURL": "{env:LITELLM_URL}/v1",
         "apiKey": "{env:LITELLM_MASTER_KEY}"
       },
       "models": {

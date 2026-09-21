@@ -51,7 +51,7 @@ oc get secret litellm-secrets -n "$NAMESPACE" -o jsonpath='{.data.LITELLM_MASTER
 echo
 echo
 
-NEW_CONFIG=$(sed "s#http://localhost:4000#https://${HOST}#g" opencode/config.snippet.json)
+NEW_CONFIG=$(sed "s#{env:LITELLM_URL}#https://${HOST}#g" opencode/config.snippet.json)
 TARGET="${OPENCODE_CONFIG_PATH:-$HOME/.config/opencode/opencode.json}"
 
 print_block() {

@@ -234,14 +234,14 @@ missing `DATABASE_URL` on your existing `litellm-secrets` Secret, adds it, and r
    slash command, or pass `-m litellm/nemotron-nano-9b-v2-fp8` to `opencode run` for a
    one-off call on a different model.
 
-**No public Route (port-forward fallback):** if you removed `k8s/route-litellm.yaml` and
-run `./03-port-forward.sh` instead, merge `opencode/config.snippet.json` as-is (its
-`baseURL` fields already point at `http://localhost:4000/v1`) rather than running
-`print-opencode-config.sh`. **WSL2 note:** if opencode runs on native Windows while `oc
-port-forward` runs inside WSL2 (or vice versa), `localhost` doesn't route between them by
-default — use WSL2 mirrored networking, or point `baseURL` at the WSL2 VM's actual IP
-instead of `localhost`. Running both in the same shell environment avoids the issue
-entirely.
+**No public Route (port-forward fallback):** `opencode/config.snippet.json` reads litellm's
+URL from the `LITELLM_URL` env var (`{env:LITELLM_URL}`), and `print-opencode-config.sh`
+fills it with the Route host when it writes your `opencode.json`. Without a Route, run
+`./03-port-forward.sh`, merge the snippet by hand and `export LITELLM_URL=http://localhost:4000`.
+**WSL2 note:** if opencode runs on native Windows while `oc port-forward` runs inside WSL2
+(or vice versa), `localhost` doesn't route between them by default — use WSL2 mirrored
+networking, or set `LITELLM_URL` to the WSL2 VM's actual IP instead of `localhost`.
+Running both in the same shell environment avoids the issue entirely.
 
 ### Context and output-token limits
 
@@ -290,9 +290,12 @@ at some *other* project without touching your own opencode config? `opencode/Doc
 builds a small image with just opencode in it; `scripts/run-opencode-container.sh` builds
 it (if needed) and runs it against any local directory, bind-mounted at `/workspace`.
 
-Prerequisites: Docker or Podman, and a working `~/.config/opencode/opencode.json` (run
-`./print-opencode-config.sh` once first — the container reuses that file as-is rather
-than regenerating it).
+Prerequisites: Docker or Podman, and `oc` logged in to the project with the litellm Route
+(or `LITELLM_URL` exported). The container doesn't use your host's `opencode.json`: it runs
+`opencode/config.snippet.json`, which takes litellm's URL from the `LITELLM_URL` env var and
+the key from `LITELLM_MASTER_KEY`. The script passes both in — the URL looked up from the
+Route unless you export `LITELLM_URL` yourself. (Set `OPENCODE_CONFIG=<file>` to mount a
+different config.)
 
 ```bash
 cd scripts
@@ -301,7 +304,7 @@ cd scripts
 ./run-opencode-container.sh ~/some-other-repo bash   # plain shell instead, opencode on PATH
 ```
 
-It picks up `LITELLM_MASTER_KEY` from your shell if already exported, or falls back to
+It picks up `LITELLM_URL` / `LITELLM_MASTER_KEY` from your shell if already exported, or falls back to
 fetching it from the `litellm-secrets` Secret via `oc` (same as `print-opencode-config.sh`)
 and injects it into the container as an env var on boot.
 
@@ -399,7 +402,7 @@ Override the model with `OPENCODE_MODEL=nemotron-nano-9b-v2-fp8 ./oc-debug.sh ..
 ([containers/kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server))
 in your project and registers it with litellm's MCP gateway (`mcp_servers` in
 `k8s/configmap-litellm-config.yaml`). It has no Route of its own: opencode reaches it at
-`<litellm>/mcp/openshift` with the same `LITELLM_MASTER_KEY` it uses for the LLM API, so no
+`<litellm>/openshift/mcp` with the same `LITELLM_MASTER_KEY` it uses for the LLM API (sent as an `x-litellm-api-key` header), so no
 local Node or kubeconfig is needed (this replaces running `npx kubernetes-mcp-server`
 locally). `opencode/config.snippet.json` carries the matching `mcp` block, and
 `print-opencode-config.sh` merges it like the rest.

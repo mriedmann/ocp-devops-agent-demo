@@ -37,10 +37,10 @@ for m in models:
 
 
 # MCP gateway: initialize + tools/list against the registered openshift server.
-mcp_headers = dict(headers, Accept='application/json, text/event-stream')
+mcp_headers = {'x-litellm-api-key': 'Bearer ' + key, 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
 def rpc(method, params, id):
     body = json.dumps({'jsonrpc': '2.0', 'id': id, 'method': method, 'params': params}).encode()
-    req = urllib.request.Request(base + '/mcp/openshift', data=body, headers=mcp_headers)
+    req = urllib.request.Request(base + '/openshift/mcp', data=body, headers=mcp_headers)
     return urllib.request.urlopen(req, timeout=30).read().decode()
 
 try:
