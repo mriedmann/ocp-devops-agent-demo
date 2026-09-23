@@ -458,3 +458,9 @@ oc delete secret litellm-secrets
 | `Gateway Time-out` from a slower tool-calling round trip (a reasoning model plus opencode's full tool-schema payload) | OpenShift's default Route backend timeout (30s) is too short | Already raised to 120s via the `haproxy.router.openshift.io/timeout` annotation in `k8s/route-litellm.yaml`; if you still see this, raise it further |
 | Containerized opencode (`run-opencode-container.sh`) starts but can't authenticate | `LITELLM_MASTER_KEY` wasn't exported and couldn't be fetched via `oc` (see the script's warning) | Export `LITELLM_MASTER_KEY` before running the script, or make sure `oc` is logged in with access to the `litellm-secrets` Secret |
 | litellm pod stuck `0/1 Ready` after a redeploy, `oc describe pod` shows the `readinessProbe` failing with 401/403 on `/health/readiness` | Known upstream regression in some litellm builds where that endpoint unexpectedly requires `x-litellm-key` ([BerriAI/litellm#8795](https://github.com/BerriAI/litellm/issues/8795)) | Check litellm pod logs for the actual error; if it's this, pin to an unaffected `litellm` image tag, or open an issue upstream — the readinessProbe itself (`k8s/deployment-litellm.yaml`) is unauthenticated by design per litellm's docs |
+
+## Copyright
+
+Copyright (c) 2026 Michael Riedmann. All rights reserved. The original code and
+documentation are not offered under an open-source license. See [LICENSE](LICENSE)
+for the full notice.

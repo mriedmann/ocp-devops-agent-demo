@@ -1,0 +1,32 @@
+# Local agent state and scratch workspace
+/.claude/
+/.tmp/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+.kube/
+kubeconfig
+*.kubeconfig
+*.key
+*.pem
+
+# Filled-in Kubernetes Secrets; keep the documented template
+/k8s/secret-*.yaml
+/k8s/secret-*.yml
+!/k8s/secret-*.example.yaml
+!/k8s/secret-*.example.yml
+
+# Generated opencode configuration and backups
+opencode.json
+opencode.json.bak.*
+opencode.json.tmp
+
+# Local output and editor files
+*.log
+*.bak
+*.bak.*
+*.swp
+*~
