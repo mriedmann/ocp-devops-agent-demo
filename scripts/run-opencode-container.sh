@@ -75,11 +75,16 @@ fi
 # First positional arg is the target directory if it's an existing
 # directory; otherwise default to $PWD and treat all args as the container
 # command override.
-TARGET_DIR="$PWD"
+TARGET_DIR="$PWD/.tmp"
 CMD=("${ARGS[@]}")
 if [ "${#ARGS[@]}" -gt 0 ] && [ -d "${ARGS[0]}" ]; then
   TARGET_DIR=$(cd "${ARGS[0]}" && pwd)
   CMD=("${ARGS[@]:1}")
+fi
+
+# create targetdir if it doesn't exist
+if [ ! -d "$TARGET_DIR" ]; then
+  mkdir -p "$TARGET_DIR"
 fi
 
 # The container runs the repo's own config, which reads the litellm URL and key
